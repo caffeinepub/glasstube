@@ -10,7 +10,7 @@ import { SearchPage } from "@/pages/SearchPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { SetupPage } from "@/pages/SetupPage";
 import { WatchPage } from "@/pages/WatchPage";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type Page =
   | "home"
@@ -25,38 +25,74 @@ type Page =
   | "watch"
   | "channel";
 
+interface NavState {
+  page: Page;
+  watchId?: string;
+  watchStartTime?: number;
+  channelId?: string;
+  searchQuery?: string;
+}
+
 export default function App() {
   const [apiReady, setApiReady] = useState(hasApiKey);
-  const [currentPage, setCurrentPage] = useState<Page>("home");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [watchId, setWatchId] = useState("");
-  const [watchStartTime, setWatchStartTime] = useState(0);
-  const [channelId, setChannelId] = useState("");
+  const [navStack, setNavStack] = useState<NavState[]>([{ page: "home" }]);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const { canInstall, install } = usePwaInstall();
 
+  const current = navStack[navStack.length - 1];
+  const currentPage = current.page;
+  const watchId = current.watchId ?? "";
+  const watchStartTime = current.watchStartTime ?? 0;
+  const channelId = current.channelId ?? "";
+  const searchQuery = current.searchQuery ?? "";
+
+  // Android back button: popstate -> go back one page in stack
+  useEffect(() => {
+    window.history.pushState({ depth: 0 }, "");
+    const handlePopState = () => {
+      setNavStack((prev) => {
+        if (prev.length > 1) {
+          window.history.pushState({ depth: prev.length - 2 }, "");
+          return prev.slice(0, -1);
+        }
+        window.history.pushState({ depth: 0 }, "");
+        return prev;
+      });
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const pushPage = useCallback((state: NavState) => {
+    window.history.pushState({ depth: 1 }, "");
+    setNavStack((prev) => [...prev, state]);
+  }, []);
+
+  // Bottom nav resets to root
   const handleNavigate = useCallback((page: string) => {
-    setCurrentPage(page as Page);
-    if (page !== "search") setSearchQuery("");
-    if (page !== "watch") setWatchId("");
+    setNavStack([{ page: page as Page }]);
   }, []);
 
-  const handleSearch = useCallback((query: string) => {
-    setSearchQuery(query);
-    setCurrentPage("search");
-    setWatchId("");
-  }, []);
+  const handleSearch = useCallback(
+    (query: string) => {
+      pushPage({ page: "search", searchQuery: query });
+    },
+    [pushPage],
+  );
 
-  const handleWatch = useCallback((id: string, resumeTime?: number) => {
-    setWatchId(id);
-    setWatchStartTime(resumeTime || 0);
-    setCurrentPage("watch");
-  }, []);
+  const handleWatch = useCallback(
+    (id: string, resumeTime?: number) => {
+      pushPage({ page: "watch", watchId: id, watchStartTime: resumeTime || 0 });
+    },
+    [pushPage],
+  );
 
-  const handleChannelClick = useCallback((id: string, _title: string) => {
-    setChannelId(id);
-    setCurrentPage("channel");
-  }, []);
+  const handleChannelClick = useCallback(
+    (id: string, _title: string) => {
+      pushPage({ page: "channel", channelId: id });
+    },
+    [pushPage],
+  );
 
   if (!apiReady) {
     return (
@@ -83,7 +119,9 @@ export default function App() {
         <ChannelPage
           channelId={channelId}
           onWatch={handleWatch}
-          onBack={() => setCurrentPage("home")}
+          onBack={() =>
+            setNavStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev))
+          }
           onChannelClick={handleChannelClick}
         />
       );

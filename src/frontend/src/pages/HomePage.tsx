@@ -1,5 +1,11 @@
 import { VideoGrid } from "@/components/VideoGrid";
-import { type YouTubeVideo, fetchTrending } from "@/lib/youtube";
+import { getHistory } from "@/lib/history";
+import {
+  type YouTubeSearchResult,
+  type YouTubeVideo,
+  fetchRelatedVideos,
+  fetchTrending,
+} from "@/lib/youtube";
 import { useEffect, useState } from "react";
 
 const CHIPS = [
@@ -62,37 +68,80 @@ export function HomePage({
   onChannelClick,
   initialChip,
 }: HomePageProps) {
-  const [videos, setVideos] = useState<YouTubeVideo[]>([]);
+  const [videos, setVideos] = useState<(YouTubeVideo | YouTubeSearchResult)[]>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeChip, setActiveChip] = useState(initialChip || "home");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [hasHistory, setHasHistory] = useState(false);
+
+  // Refresh when user navigates back to home
+  useEffect(() => {
+    setRefreshKey((k) => k + 1);
+  }, []);
 
   const catId = CATEGORY_IDS[activeChip];
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey intentionally triggers re-fetch
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
     setVideos([]);
-    fetchTrending(catId)
-      .then((data) => {
-        if (!cancelled) {
-          setVideos(data);
-          setLoading(false);
+
+    async function load() {
+      try {
+        if (activeChip === "home") {
+          const history = getHistory();
+          setHasHistory(history.length > 0);
+          if (history.length > 0) {
+            const related = await fetchRelatedVideos(history[0].id);
+            if (!cancelled) {
+              if (related.length >= 8) {
+                setVideos(related);
+              } else {
+                // Pad with trending, filtering duplicates
+                const trending = await fetchTrending(undefined);
+                const relatedIds = new Set(related.map((v) => v.id));
+                const padded = trending.filter((v) => !relatedIds.has(v.id));
+                setVideos([...related, ...padded]);
+              }
+              setLoading(false);
+            }
+          } else {
+            const data = await fetchTrending(undefined);
+            if (!cancelled) {
+              setVideos(data);
+              setLoading(false);
+            }
+          }
+        } else {
+          const data = await fetchTrending(catId);
+          if (!cancelled) {
+            setHasHistory(false);
+            setVideos(data);
+            setLoading(false);
+          }
         }
-      })
-      .catch((err) => {
+      } catch (err: any) {
         if (!cancelled) {
           setError(err.message);
           setLoading(false);
         }
-      });
+      }
+    }
+
+    load();
     return () => {
       cancelled = true;
     };
-  }, [catId]);
+  }, [activeChip, catId, refreshKey]);
 
-  const sectionTitle = SECTION_TITLES[activeChip] || "For You";
+  const baseSectionTitle = SECTION_TITLES[activeChip] || "For You";
+  const sectionTitle =
+    activeChip === "home" && hasHistory ? "Recommended" : baseSectionTitle;
   const sectionEmoji = SECTION_EMOJIS[activeChip] || "🏠";
 
   return (

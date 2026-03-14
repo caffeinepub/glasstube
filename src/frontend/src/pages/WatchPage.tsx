@@ -517,7 +517,7 @@ export function WatchPage({
               </button>
             </div>
 
-            {/* Action buttons — single row, no wrap, scrollable if needed but hidden scrollbar */}
+            {/* Action buttons — single row, no wrap, no scroll needed */}
             <div
               className="pb-3"
               style={{
@@ -655,21 +655,19 @@ export function WatchPage({
                 Save
               </button>
 
-              {/* Download */}
+              {/* Download — icon only */}
               <button
                 type="button"
-                className="flex items-center gap-1"
+                className="flex items-center"
+                aria-label="Download"
                 style={{
-                  padding: "5px 9px",
+                  padding: "5px 10px",
                   background: "#1a1a1a",
                   borderRadius: 20,
-                  fontSize: 11,
-                  fontWeight: 500,
                   color: "#f1f1f1",
                   border: "1px solid rgba(255,255,255,0.08)",
                   cursor: "pointer",
                   flexShrink: 0,
-                  whiteSpace: "nowrap",
                   transition: "background 0.15s ease",
                 }}
                 data-ocid="player.secondary_button"
@@ -683,24 +681,21 @@ export function WatchPage({
                 >
                   <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
                 </svg>
-                Download
               </button>
 
-              {/* Clip */}
+              {/* Clip — icon only */}
               <button
                 type="button"
-                className="flex items-center gap-1"
+                className="flex items-center"
+                aria-label="Clip"
                 style={{
-                  padding: "5px 9px",
+                  padding: "5px 10px",
                   background: "#1a1a1a",
                   borderRadius: 20,
-                  fontSize: 11,
-                  fontWeight: 500,
                   color: "#f1f1f1",
                   border: "1px solid rgba(255,255,255,0.08)",
                   cursor: "pointer",
                   flexShrink: 0,
-                  whiteSpace: "nowrap",
                   transition: "background 0.15s ease",
                 }}
                 data-ocid="player.toggle"
@@ -714,7 +709,6 @@ export function WatchPage({
                 >
                   <path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z" />
                 </svg>
-                Clip
               </button>
             </div>
           </>
