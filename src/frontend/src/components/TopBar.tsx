@@ -8,6 +8,7 @@ interface TopBarProps {
 
 export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
   const [query, setQuery] = useState(currentQuery || "");
+  const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   function handleSubmit(e: React.FormEvent) {
@@ -29,21 +30,60 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
       }}
     >
       <div className="flex items-center px-3 gap-2" style={{ height: 64 }}>
-        {/* Logo */}
+        {/* Logo + Brand */}
         <button
           type="button"
           onClick={() => onNavigate("home")}
-          className="flex items-center gap-1 flex-shrink-0"
+          className="flex items-center flex-shrink-0"
+          style={{ gap: 3 }}
           data-ocid="topbar.logo.link"
           aria-label="Go to Home"
         >
-          {/* Logo image with 'by Ayush' stacked below it */}
-          <div className="flex flex-col items-center" style={{ gap: 1 }}>
-            <img
-              src="/assets/uploads/IMG_20260314_072526-1.png"
-              alt="Modx Logo"
-              style={{ width: 36, height: 36, objectFit: "contain" }}
-            />
+          <img
+            src="/assets/uploads/IMG_20260314_072526-1.png"
+            alt="M"
+            style={{
+              width: 38,
+              height: 38,
+              objectFit: "contain",
+              background: "transparent",
+              mixBlendMode: "screen",
+            }}
+          />
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              gap: 0,
+            }}
+          >
+            <div
+              style={{ display: "flex", alignItems: "baseline", lineHeight: 1 }}
+            >
+              <span
+                style={{
+                  color: "#FF0000",
+                  fontWeight: 800,
+                  fontSize: 19,
+                  fontFamily: "Roboto, sans-serif",
+                  letterSpacing: "0.3px",
+                }}
+              >
+                odx
+              </span>
+              <span
+                style={{
+                  color: "#ffffff",
+                  fontWeight: 800,
+                  fontSize: 19,
+                  fontFamily: "Roboto, sans-serif",
+                  letterSpacing: "0.3px",
+                }}
+              >
+                Tube
+              </span>
+            </div>
             <span
               style={{
                 color: "#aaaaaa",
@@ -51,60 +91,93 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
                 fontWeight: 400,
                 letterSpacing: "0.3px",
                 lineHeight: 1,
+                marginTop: 1,
+                paddingLeft: 1,
               }}
             >
               by Ayush
             </span>
           </div>
-          {/* Brand name */}
-          <span
-            style={{
-              fontFamily: "Roboto, sans-serif",
-              letterSpacing: "0.5px",
-              marginLeft: 4,
-            }}
-          >
-            <span style={{ color: "#FF0000", fontWeight: 800, fontSize: 18 }}>
-              MODX
-            </span>
-            <span style={{ color: "#ffffff", fontWeight: 800, fontSize: 18 }}>
-              TUBE
-            </span>
-          </span>
         </button>
 
-        {/* Inline search bar */}
+        {/* Search bar */}
         <form
           onSubmit={handleSubmit}
           className="flex-1 flex items-center"
           style={{
-            background: "rgba(255,255,255,0.1)",
-            borderRadius: 24,
+            background: "rgba(255,255,255,0.07)",
+            borderRadius: 28,
             height: 40,
-            padding: "0 12px",
+            padding: "0 14px",
             gap: 8,
+            border: focused
+              ? "1.5px solid rgba(255,0,0,0.75)"
+              : "1.5px solid rgba(255,0,0,0.3)",
+            boxShadow: focused ? "0 0 10px rgba(255,0,0,0.18)" : "none",
+            transition: "border 0.2s, box-shadow 0.2s",
           }}
         >
+          <svg
+            aria-hidden="true"
+            width="15"
+            height="15"
+            fill="#888"
+            viewBox="0 0 24 24"
+            style={{ flexShrink: 0 }}
+          >
+            <path d="M20.87 20.17l-5.59-5.59C16.35 13.35 17 11.75 17 10c0-3.87-3.13-7-7-7s-7 3.13-7 7 3.13 7 7 7c1.75 0 3.35-.65 4.58-1.71l5.59 5.59.7-.71zM10 16c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z" />
+          </svg>
           <input
             ref={inputRef}
-            className="flex-1 bg-transparent outline-none text-sm text-[#f1f1f1] placeholder-[#888]"
-            style={{ fontSize: 14 }}
+            className="flex-1 bg-transparent outline-none text-[#f1f1f1] placeholder-[#666]"
+            style={{ fontSize: 13.5 }}
             placeholder="Search YouTube..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
             data-ocid="search.search_input"
           />
+          {query.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              aria-label="Clear"
+              style={{
+                color: "#888",
+                fontSize: 16,
+                lineHeight: 1,
+                background: "none",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+              }}
+            >
+              ×
+            </button>
+          )}
           <button
             type="submit"
             aria-label="Search"
             data-ocid="search.submit_button"
-            className="flex-shrink-0"
+            style={{
+              background: "rgba(255,0,0,0.75)",
+              borderRadius: 18,
+              width: 28,
+              height: 28,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              border: "none",
+              cursor: "pointer",
+            }}
           >
             <svg
               aria-hidden="true"
-              width="18"
-              height="18"
-              fill="#aaa"
+              width="14"
+              height="14"
+              fill="#fff"
               viewBox="0 0 24 24"
             >
               <path d="M20.87 20.17l-5.59-5.59C16.35 13.35 17 11.75 17 10c0-3.87-3.13-7-7-7s-7 3.13-7 7 3.13 7 7 7c1.75 0 3.35-.65 4.58-1.71l5.59 5.59.7-.71zM10 16c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z" />
