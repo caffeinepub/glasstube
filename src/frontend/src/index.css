@@ -1,0 +1,187 @@
+@import url("https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0 0;
+    --foreground: 0.945 0 0;
+    --card: 0.08 0 0;
+    --card-foreground: 0.945 0 0;
+    --popover: 0.08 0 0;
+    --popover-foreground: 0.945 0 0;
+    --primary: 0.5 0.25 27;
+    --primary-foreground: 1 0 0;
+    --secondary: 0.1 0 0;
+    --secondary-foreground: 0.945 0 0;
+    --muted: 0.1 0 0;
+    --muted-foreground: 0.44 0 0;
+    --accent: 0.1 0 0;
+    --accent-foreground: 0.945 0 0;
+    --destructive: 0.5 0.25 27;
+    --destructive-foreground: 1 0 0;
+    --border: 0.18 0 0;
+    --input: 0.1 0 0;
+    --ring: 0.5 0.25 27;
+    --radius: 0.5rem;
+    --sidebar: 0 0 0;
+    --sidebar-foreground: 0.945 0 0;
+    --sidebar-primary: 0.5 0.25 27;
+    --sidebar-primary-foreground: 1 0 0;
+    --sidebar-accent: 0.1 0 0;
+    --sidebar-accent-foreground: 0.945 0 0;
+    --sidebar-border: 0.18 0 0;
+    --sidebar-ring: 0.5 0.25 27;
+
+    /* AMOLED YouTube colors */
+    --yt-bg: #000000;
+    --yt-surface: #0d0d0d;
+    --yt-surface2: #141414;
+    --yt-surface3: #1a1a1a;
+    --yt-border: rgba(255, 255, 255, 0.08);
+    --yt-text: #f1f1f1;
+    --yt-text-secondary: #717171;
+    --yt-text-muted: #aaaaaa;
+    --yt-red: #ff0000;
+    --yt-white: #ffffff;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  body {
+    background-color: #000000;
+    color: #f1f1f1;
+    font-family: "Roboto", sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5 {
+    font-family: "Roboto", sans-serif;
+    font-weight: 600;
+  }
+
+  /* Hide scrollbar */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
+}
+
+@layer components {
+  /* Chip filter */
+  .yt-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.1s;
+    background: #272727;
+    color: #f1f1f1;
+    border: none;
+    flex-shrink: 0;
+  }
+  .yt-chip:hover {
+    background: #333;
+  }
+  .yt-chip.active {
+    background: #f1f1f1;
+    color: #000000;
+  }
+
+  /* Bottom nav item */
+  .yt-bottom-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 8px 0;
+    color: #717171;
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 0.15s;
+    text-decoration: none;
+    flex: 1;
+    border: none;
+    background: transparent;
+    position: relative;
+  }
+  .yt-bottom-nav-item.active {
+    color: #f1f1f1;
+  }
+  .yt-bottom-nav-item.active svg {
+    fill: #f1f1f1;
+  }
+
+  /* Skeleton shimmer - AMOLED */
+  .yt-skeleton {
+    background: linear-gradient(90deg, #111 25%, #1c1c1c 50%, #111 75%);
+    background-size: 200% 100%;
+    animation: yt-shimmer 1.5s infinite;
+    border-radius: 4px;
+  }
+
+  @keyframes yt-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-fade-in {
+    animation: fade-in 0.25s ease forwards;
+  }
+
+  @keyframes slide-down {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-slide-down {
+    animation: slide-down 0.2s ease forwards;
+  }
+}
