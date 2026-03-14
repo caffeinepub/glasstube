@@ -30,19 +30,34 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
       }}
     >
       <div
-        className="flex items-center"
-        style={{ height: 64, paddingLeft: 6, paddingRight: 10 }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          height: 64,
+          paddingLeft: 6,
+          paddingRight: 10,
+          overflow: "hidden",
+          boxSizing: "border-box",
+          width: "100%",
+        }}
       >
         {/* Logo + Brand */}
         <button
           type="button"
           onClick={() => onNavigate("home")}
-          className="flex items-center flex-shrink-0"
-          style={{ gap: 8 }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexShrink: 0,
+            background: "none",
+            border: "none",
+            padding: 0,
+            cursor: "pointer",
+          }}
           data-ocid="topbar.logo.link"
           aria-label="Go to Home"
         >
-          {/* Circular PNG logo with red border */}
           <div
             style={{
               width: 50,
@@ -119,16 +134,17 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
           </div>
         </button>
 
-        {/* Search bar — perfectly vertically centered with equal top/bottom margin */}
+        {/* Search bar — constrained to remaining space, never overflows */}
         <form
           onSubmit={handleSubmit}
-          className="flex items-center"
           style={{
-            flex: "0 1 150px",
-            marginLeft: "auto",
-            marginRight: 6,
-            marginTop: "auto",
-            marginBottom: "auto",
+            flex: "1 1 0",
+            minWidth: 0,
+            maxWidth: 180,
+            marginLeft: 8,
+            marginRight: 0,
+            display: "flex",
+            alignItems: "center",
             background: "rgba(255,255,255,0.07)",
             borderRadius: 24,
             height: 28,
@@ -139,6 +155,8 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
               : "1.5px solid rgba(255,0,0,0.3)",
             boxShadow: focused ? "0 0 8px rgba(255,0,0,0.18)" : "none",
             transition: "border 0.2s, box-shadow 0.2s",
+            boxSizing: "border-box",
+            overflow: "hidden",
           }}
         >
           <svg
@@ -153,8 +171,15 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
           </svg>
           <input
             ref={inputRef}
-            className="flex-1 bg-transparent outline-none text-[#f1f1f1] placeholder-[#666]"
-            style={{ fontSize: 11, minWidth: 0 }}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              background: "transparent",
+              outline: "none",
+              border: "none",
+              color: "#f1f1f1",
+              fontSize: 11,
+            }}
             placeholder="Search..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}

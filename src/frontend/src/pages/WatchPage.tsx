@@ -137,6 +137,7 @@ export function WatchPage({
   const [playerHovered, setPlayerHovered] = useState(false);
   const ambientCanvasRef = useRef<HTMLCanvasElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const playerCardRef = useRef<HTMLDivElement>(null);
   const startTimeRef = useRef<number>(Date.now());
   const currentResumeRef = useRef<number>(startTime);
   const isPlayingRef = useRef<boolean>(false);
@@ -242,6 +243,23 @@ export function WatchPage({
     };
   }, [videoId, startTime]);
 
+  function handleFullscreen() {
+    const el = playerCardRef.current as
+      | (HTMLElement & {
+          webkitRequestFullscreen?: () => Promise<void>;
+          mozRequestFullScreen?: () => Promise<void>;
+        })
+      | null;
+    if (!el) return;
+    if (el.requestFullscreen) {
+      el.requestFullscreen();
+    } else if (el.webkitRequestFullscreen) {
+      el.webkitRequestFullscreen();
+    } else if (el.mozRequestFullScreen) {
+      el.mozRequestFullScreen();
+    }
+  }
+
   if (error) {
     return (
       <div className="p-8 text-center" data-ocid="video.error_state">
@@ -289,6 +307,7 @@ export function WatchPage({
           }}
         >
           <div
+            ref={playerCardRef}
             style={{
               borderRadius: 12,
               overflow: "hidden",
@@ -305,6 +324,7 @@ export function WatchPage({
               willChange: "transform, box-shadow",
               aspectRatio: "16/9",
               background: "#000",
+              position: "relative",
             }}
           >
             {/* Reflective top-edge highlight */}
@@ -332,6 +352,42 @@ export function WatchPage({
               style={{ position: "relative", zIndex: 1 }}
               title="YouTube video player"
             />
+
+            {/* Fullscreen button overlay */}
+            <button
+              type="button"
+              onClick={handleFullscreen}
+              aria-label="Fullscreen"
+              data-ocid="player.fullscreen.button"
+              style={{
+                position: "absolute",
+                bottom: 8,
+                right: 8,
+                zIndex: 20,
+                width: 28,
+                height: 28,
+                borderRadius: 6,
+                background: "rgba(0,0,0,0.6)",
+                backdropFilter: "blur(4px)",
+                WebkitBackdropFilter: "blur(4px)",
+                border: "1px solid rgba(255,255,255,0.2)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                transition: "background 0.15s ease",
+              }}
+            >
+              <svg
+                aria-hidden="true"
+                width="14"
+                height="14"
+                fill="#ffffff"
+                viewBox="0 0 24 24"
+              >
+                <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>

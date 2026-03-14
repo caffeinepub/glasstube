@@ -33,9 +33,24 @@ interface NavState {
   searchQuery?: string;
 }
 
+const SESSION_KEY = "modxtube_nav_state";
+
+function loadPersistedState(): NavState[] {
+  try {
+    const saved = sessionStorage.getItem(SESSION_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved) as NavState[];
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  return [{ page: "home" }];
+}
+
 export default function App() {
   const [apiReady, setApiReady] = useState(hasApiKey);
-  const [navStack, setNavStack] = useState<NavState[]>([{ page: "home" }]);
+  const [navStack, setNavStack] = useState<NavState[]>(loadPersistedState);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const { canInstall, install } = usePwaInstall();
 
@@ -45,6 +60,15 @@ export default function App() {
   const watchStartTime = current.watchStartTime ?? 0;
   const channelId = current.channelId ?? "";
   const searchQuery = current.searchQuery ?? "";
+
+  // Persist nav stack to sessionStorage on every change
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(navStack));
+    } catch {
+      // ignore
+    }
+  }, [navStack]);
 
   // Android back button: popstate -> go back one page in stack
   useEffect(() => {
