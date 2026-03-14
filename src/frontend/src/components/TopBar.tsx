@@ -29,27 +29,46 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
         borderBottom: "1px solid rgba(255,255,255,0.08)",
       }}
     >
-      <div className="flex items-center px-3 gap-2" style={{ height: 64 }}>
+      <div
+        className="flex items-center"
+        style={{ height: 64, paddingLeft: 6, paddingRight: 10 }}
+      >
         {/* Logo + Brand */}
         <button
           type="button"
           onClick={() => onNavigate("home")}
           className="flex items-center flex-shrink-0"
-          style={{ gap: 3 }}
+          style={{ gap: 8 }}
           data-ocid="topbar.logo.link"
           aria-label="Go to Home"
         >
-          <img
-            src="/assets/uploads/IMG_20260314_072526-1.png"
-            alt="M"
+          {/* Circular PNG logo with red border */}
+          <div
             style={{
-              width: 38,
-              height: 38,
-              objectFit: "contain",
-              background: "transparent",
-              mixBlendMode: "screen",
+              width: 50,
+              height: 50,
+              borderRadius: "50%",
+              border: "2px solid rgba(255,0,0,0.75)",
+              overflow: "hidden",
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(0,0,0,0.3)",
             }}
-          />
+          >
+            <img
+              src="/assets/uploads/IMG_20260314_072526-1-1.png"
+              alt="M"
+              style={{
+                width: 46,
+                height: 46,
+                objectFit: "contain",
+                mixBlendMode: "screen",
+                display: "block",
+              }}
+            />
+          </div>
           <div
             style={{
               display: "flex",
@@ -70,7 +89,7 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
                   letterSpacing: "0.3px",
                 }}
               >
-                odx
+                Modx
               </span>
               <span
                 style={{
@@ -91,7 +110,7 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
                 fontWeight: 400,
                 letterSpacing: "0.3px",
                 lineHeight: 1,
-                marginTop: 1,
+                marginTop: 2,
                 paddingLeft: 1,
               }}
             >
@@ -100,27 +119,32 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
           </div>
         </button>
 
-        {/* Search bar */}
+        {/* Search bar — perfectly vertically centered with equal top/bottom margin */}
         <form
           onSubmit={handleSubmit}
-          className="flex-1 flex items-center"
+          className="flex items-center"
           style={{
+            flex: "0 1 150px",
+            marginLeft: "auto",
+            marginRight: 6,
+            marginTop: "auto",
+            marginBottom: "auto",
             background: "rgba(255,255,255,0.07)",
-            borderRadius: 28,
-            height: 40,
-            padding: "0 14px",
-            gap: 8,
+            borderRadius: 24,
+            height: 28,
+            padding: "0 6px",
+            gap: 4,
             border: focused
               ? "1.5px solid rgba(255,0,0,0.75)"
               : "1.5px solid rgba(255,0,0,0.3)",
-            boxShadow: focused ? "0 0 10px rgba(255,0,0,0.18)" : "none",
+            boxShadow: focused ? "0 0 8px rgba(255,0,0,0.18)" : "none",
             transition: "border 0.2s, box-shadow 0.2s",
           }}
         >
           <svg
             aria-hidden="true"
-            width="15"
-            height="15"
+            width="12"
+            height="12"
             fill="#888"
             viewBox="0 0 24 24"
             style={{ flexShrink: 0 }}
@@ -130,8 +154,8 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
           <input
             ref={inputRef}
             className="flex-1 bg-transparent outline-none text-[#f1f1f1] placeholder-[#666]"
-            style={{ fontSize: 13.5 }}
-            placeholder="Search YouTube..."
+            style={{ fontSize: 11, minWidth: 0 }}
+            placeholder="Search..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => setFocused(true)}
@@ -145,12 +169,13 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
               aria-label="Clear"
               style={{
                 color: "#888",
-                fontSize: 16,
+                fontSize: 13,
                 lineHeight: 1,
                 background: "none",
                 border: "none",
                 padding: 0,
                 cursor: "pointer",
+                flexShrink: 0,
               }}
             >
               ×
@@ -162,9 +187,9 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
             data-ocid="search.submit_button"
             style={{
               background: "rgba(255,0,0,0.75)",
-              borderRadius: 18,
-              width: 28,
-              height: 28,
+              borderRadius: 16,
+              width: 20,
+              height: 20,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -175,8 +200,8 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
           >
             <svg
               aria-hidden="true"
-              width="14"
-              height="14"
+              width="10"
+              height="10"
               fill="#fff"
               viewBox="0 0 24 24"
             >

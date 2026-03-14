@@ -45,6 +45,23 @@ export interface YouTubeSearchResult {
 
 const BASE = "https://www.googleapis.com/youtube/v3";
 
+/** Returns the best available thumbnail URL for a video ID (direct CDN). */
+export function getYtThumbnail(videoId: string): string {
+  return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+}
+
+/** Pick the best thumbnail URL from the API snippet thumbnails object. */
+function bestThumb(thumbnails: any, videoId?: string): string {
+  return (
+    thumbnails?.maxres?.url ||
+    thumbnails?.standard?.url ||
+    thumbnails?.high?.url ||
+    thumbnails?.medium?.url ||
+    thumbnails?.default?.url ||
+    (videoId ? getYtThumbnail(videoId) : "")
+  );
+}
+
 // Channel thumbnail cache
 const channelThumbCache: Record<string, string> = {};
 
@@ -58,7 +75,6 @@ export async function fetchChannelThumbnails(
       channelIds.map((id) => [id, channelThumbCache[id] || ""]),
     );
   }
-  // Batch up to 50
   const batches: string[][] = [];
   for (let i = 0; i < uncached.length; i += 50) {
     batches.push(uncached.slice(i, i + 50));
@@ -71,8 +87,8 @@ export async function fetchChannelThumbnails(
         const data = await res.json();
         for (const item of data.items || []) {
           const thumb =
-            item.snippet?.thumbnails?.default?.url ||
             item.snippet?.thumbnails?.medium?.url ||
+            item.snippet?.thumbnails?.default?.url ||
             "";
           channelThumbCache[item.id] = thumb;
         }
@@ -113,11 +129,7 @@ export async function fetchTrending(
     title: item.snippet.title,
     channelTitle: item.snippet.channelTitle,
     channelId: item.snippet.channelId,
-    thumbnail:
-      item.snippet.thumbnails?.maxres?.url ||
-      item.snippet.thumbnails?.high?.url ||
-      item.snippet.thumbnails?.medium?.url ||
-      "",
+    thumbnail: bestThumb(item.snippet.thumbnails, item.id),
     viewCount: item.statistics?.viewCount || "0",
     likeCount: item.statistics?.likeCount || "0",
     publishedAt: item.snippet.publishedAt,
@@ -125,7 +137,6 @@ export async function fetchTrending(
     categoryId: item.snippet.categoryId,
     duration: parseDuration(item.contentDetails?.duration || ""),
   }));
-  // Fetch channel thumbnails
   const channelIds = [...new Set(videos.map((v) => v.channelId))];
   const thumbs = await fetchChannelThumbnails(channelIds);
   return videos.map((v) => ({
@@ -145,20 +156,18 @@ export async function searchVideos(
     throw new Error(err?.error?.message || "Failed to search videos");
   }
   const data = await res.json();
-  const results: YouTubeSearchResult[] = (data.items || []).map(
-    (item: any) => ({
-      id: item.id?.videoId || item.id,
+  const results: YouTubeSearchResult[] = (data.items || []).map((item: any) => {
+    const vid = item.id?.videoId || item.id;
+    return {
+      id: vid,
       title: item.snippet.title,
       channelTitle: item.snippet.channelTitle,
       channelId: item.snippet.channelId,
-      thumbnail:
-        item.snippet.thumbnails?.high?.url ||
-        item.snippet.thumbnails?.medium?.url ||
-        "",
+      thumbnail: bestThumb(item.snippet.thumbnails, vid),
       publishedAt: item.snippet.publishedAt,
       description: item.snippet.description,
-    }),
-  );
+    };
+  });
   const channelIds = [...new Set(results.map((v) => v.channelId))];
   const thumbs = await fetchChannelThumbnails(channelIds);
   return results.map((v) => ({
@@ -185,10 +194,7 @@ export async function fetchVideoDetails(
     title: item.snippet.title,
     channelTitle: item.snippet.channelTitle,
     channelId: item.snippet.channelId,
-    thumbnail:
-      item.snippet.thumbnails?.maxres?.url ||
-      item.snippet.thumbnails?.high?.url ||
-      "",
+    thumbnail: bestThumb(item.snippet.thumbnails, item.id),
     viewCount: item.statistics?.viewCount || "0",
     likeCount: item.statistics?.likeCount || "0",
     publishedAt: item.snippet.publishedAt,
@@ -212,18 +218,18 @@ export async function fetchRelatedVideos(
       const data = await res.json();
       if (data.items?.length > 0) {
         const results: YouTubeSearchResult[] = (data.items || []).map(
-          (item: any) => ({
-            id: item.id?.videoId || item.id,
-            title: item.snippet.title,
-            channelTitle: item.snippet.channelTitle,
-            channelId: item.snippet.channelId,
-            thumbnail:
-              item.snippet.thumbnails?.high?.url ||
-              item.snippet.thumbnails?.medium?.url ||
-              "",
-            publishedAt: item.snippet.publishedAt,
-            description: item.snippet.description,
-          }),
+          (item: any) => {
+            const vid = item.id?.videoId || item.id;
+            return {
+              id: vid,
+              title: item.snippet.title,
+              channelTitle: item.snippet.channelTitle,
+              channelId: item.snippet.channelId,
+              thumbnail: bestThumb(item.snippet.thumbnails, vid),
+              publishedAt: item.snippet.publishedAt,
+              description: item.snippet.description,
+            };
+          },
         );
         const channelIds = [...new Set(results.map((v) => v.channelId))];
         const thumbs = await fetchChannelThumbnails(channelIds);
@@ -238,4 +244,53 @@ export async function fetchRelatedVideos(
     return (await fetchTrending(categoryId)).map((v) => ({ ...v }));
   }
   return fetchTrending();
+}
+
+export async function fetchChannelVideos(channelId: string): Promise<{
+  channel: {
+    id: string;
+    title: string;
+    thumbnail: string;
+    description: string;
+    subscriberCount: string;
+  };
+  videos: YouTubeSearchResult[];
+}> {
+  const key = getApiKey();
+  const [channelRes, searchRes] = await Promise.all([
+    fetch(
+      `${BASE}/channels?part=snippet,statistics&id=${channelId}&key=${key}`,
+    ),
+    fetch(
+      `${BASE}/search?part=snippet&channelId=${channelId}&type=video&maxResults=24&order=viewCount&key=${key}`,
+    ),
+  ]);
+  const channelData = await channelRes.json();
+  const ch = channelData.items?.[0];
+  const channel = {
+    id: channelId,
+    title: ch?.snippet?.title || "",
+    thumbnail:
+      ch?.snippet?.thumbnails?.medium?.url ||
+      ch?.snippet?.thumbnails?.default?.url ||
+      "",
+    description: ch?.snippet?.description || "",
+    subscriberCount: ch?.statistics?.subscriberCount || "0",
+  };
+  const searchData = await searchRes.json();
+  const videos: YouTubeSearchResult[] = (searchData.items || []).map(
+    (item: any) => {
+      const vid = item.id?.videoId || item.id;
+      return {
+        id: vid,
+        title: item.snippet.title,
+        channelTitle: item.snippet.channelTitle,
+        channelId: item.snippet.channelId,
+        thumbnail: bestThumb(item.snippet.thumbnails, vid),
+        publishedAt: item.snippet.publishedAt,
+        description: item.snippet.description,
+      };
+    },
+  );
+  return { channel, videos };
 }

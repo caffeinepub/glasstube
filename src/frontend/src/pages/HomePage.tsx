@@ -52,14 +52,20 @@ const SECTION_EMOJIS: Record<string, string> = {
 };
 
 interface HomePageProps {
-  onWatch: (id: string) => void;
+  onWatch: (id: string, resumeTime?: number) => void;
+  onChannelClick?: (channelId: string, channelTitle: string) => void;
+  initialChip?: string;
 }
 
-export function HomePage({ onWatch }: HomePageProps) {
+export function HomePage({
+  onWatch,
+  onChannelClick,
+  initialChip,
+}: HomePageProps) {
   const [videos, setVideos] = useState<YouTubeVideo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeChip, setActiveChip] = useState("home");
+  const [activeChip, setActiveChip] = useState(initialChip || "home");
 
   const catId = CATEGORY_IDS[activeChip];
 
@@ -165,6 +171,7 @@ export function HomePage({ onWatch }: HomePageProps) {
         loading={loading}
         error={error}
         onWatch={onWatch}
+        onChannelClick={onChannelClick}
       />
     </div>
   );

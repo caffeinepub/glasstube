@@ -8,6 +8,7 @@ interface VideoGridProps {
   loading?: boolean;
   error?: string | null;
   onWatch: (id: string) => void;
+  onChannelClick?: (channelId: string, channelTitle: string) => void;
   emptyMessage?: string;
 }
 
@@ -16,6 +17,7 @@ export function VideoGrid({
   loading,
   error,
   onWatch,
+  onChannelClick,
   emptyMessage,
 }: VideoGridProps) {
   if (error) {
@@ -90,7 +92,13 @@ export function VideoGrid({
   return (
     <div>
       {videos.map((v, i) => (
-        <VideoCard key={v.id} video={v} onWatch={onWatch} index={i} />
+        <VideoCard
+          key={v.id}
+          video={v}
+          onWatch={onWatch}
+          onChannelClick={onChannelClick}
+          index={i}
+        />
       ))}
     </div>
   );

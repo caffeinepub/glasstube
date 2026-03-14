@@ -5,9 +5,14 @@ import { useEffect, useState } from "react";
 interface SearchPageProps {
   query: string;
   onWatch: (id: string) => void;
+  onChannelClick?: (channelId: string, channelTitle: string) => void;
 }
 
-export function SearchPage({ query, onWatch }: SearchPageProps) {
+export function SearchPage({
+  query,
+  onWatch,
+  onChannelClick,
+}: SearchPageProps) {
   const [results, setResults] = useState<YouTubeSearchResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +59,7 @@ export function SearchPage({ query, onWatch }: SearchPageProps) {
         loading={loading}
         error={error}
         onWatch={onWatch}
+        onChannelClick={onChannelClick}
         emptyMessage="No results found. Try a different search term."
       />
     </div>
