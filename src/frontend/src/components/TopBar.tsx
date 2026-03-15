@@ -35,7 +35,6 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Update suggestions on every keystroke
   useEffect(() => {
     if (!query.trim()) {
       setSuggestions([]);
@@ -51,7 +50,6 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
     setShowDropdown(matches.length > 0 && focused);
   }, [query, focused]);
 
-  // Close dropdown on outside tap
   useEffect(() => {
     function handleOutside(e: MouseEvent | TouchEvent) {
       if (
@@ -100,6 +98,7 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
         boxShadow: "none",
       }}
     >
+      {/* 64px content row — search bar is a regular flex child so alignItems:center guarantees true vertical center */}
       <div
         style={{
           display: "flex",
@@ -107,10 +106,8 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
           height: 64,
           paddingLeft: 6,
           paddingRight: 10,
-          overflow: "visible",
           boxSizing: "border-box",
           width: "100%",
-          position: "relative",
         }}
       >
         {/* Logo + Brand */}
@@ -206,17 +203,15 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
           </div>
         </button>
 
-        {/* Spacer */}
+        {/* Spacer pushes search to the right */}
         <div style={{ flex: 1 }} />
 
-        {/* Search bar + dropdown wrapper */}
+        {/* Search bar — plain flex child, centered by parent alignItems:center */}
         <div
           style={{
-            position: "absolute",
-            top: "50%",
-            transform: "translateY(-50%)",
-            right: 10,
+            flexShrink: 0,
             width: 170,
+            position: "relative",
           }}
         >
           <form
@@ -264,7 +259,6 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
               onChange={(e) => setQuery(e.target.value)}
               onFocus={() => {
                 setFocused(true);
-                // Show dropdown if there are matches
                 if (query.trim()) {
                   const cache = getSearchCache();
                   const q = query.toLowerCase();
@@ -278,7 +272,6 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
               }}
               onBlur={() => {
                 setFocused(false);
-                // Delay to allow suggestion click
                 setTimeout(() => setShowDropdown(false), 150);
               }}
               data-ocid="search.search_input"
@@ -358,7 +351,7 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
                 <button
                   key={s}
                   type="button"
-                  onMouseDown={(e) => e.preventDefault()} // prevent blur
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => handleSuggestionClick(s)}
                   data-ocid={`search.item.${i + 1}`}
                   style={{
