@@ -36,6 +36,10 @@ interface NavState {
 const SESSION_KEY = "modxtube_nav_state";
 const BG_SESSION_KEY = "modxtube_bg_nav_state";
 
+// Mini-player dimensions
+const MINI_W = 260;
+const MINI_H = Math.round((MINI_W * 9) / 16); // 146px — pure 16:9 video
+
 function loadPersistedState(): NavState[] {
   try {
     const saved = sessionStorage.getItem(SESSION_KEY);
@@ -60,397 +64,6 @@ function loadBgState(): NavState[] {
   return [{ page: "home" }];
 }
 
-// SVG Icons for miniplayer controls
-const IconPlay = () => (
-  <svg
-    width="18"
-    height="18"
-    viewBox="0 0 24 24"
-    fill="currentColor"
-    aria-hidden="true"
-  >
-    <path d="M8 5v14l11-7z" />
-  </svg>
-);
-
-const IconPause = () => (
-  <svg
-    width="18"
-    height="18"
-    viewBox="0 0 24 24"
-    fill="currentColor"
-    aria-hidden="true"
-  >
-    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-  </svg>
-);
-
-const IconClose = () => (
-  <svg
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="currentColor"
-    aria-hidden="true"
-  >
-    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-  </svg>
-);
-
-const IconExpand = () => (
-  <svg
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="currentColor"
-    aria-hidden="true"
-  >
-    <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
-  </svg>
-);
-
-// Floating draggable mini player card
-function MiniPlayerCard({
-  videoId,
-  startTime,
-  onExpand,
-  onClose,
-}: {
-  videoId: string;
-  startTime: number;
-  onExpand: () => void;
-  onClose: () => void;
-}) {
-  const MINI_W = window.innerWidth < 400 ? 200 : 260;
-  const VIDEO_H = Math.round((MINI_W * 9) / 16);
-  const CONTROLS_H = 40;
-  const MINI_H = VIDEO_H + CONTROLS_H;
-
-  // Default position: bottom-right above nav bar
-  const [pos, setPos] = useState({
-    x: window.innerWidth - MINI_W - 10,
-    y: window.innerHeight - MINI_H - 86,
-  });
-  const [isPlaying, setIsPlaying] = useState(true);
-  const [exiting, setExiting] = useState(false);
-  const [playerReady, setPlayerReady] = useState(false);
-  const miniIframeRef = useRef<HTMLIFrameElement>(null);
-  const dragging = useRef(false);
-  const startTouch = useRef({ x: 0, y: 0 });
-  const startPos = useRef({ x: 0, y: 0 });
-  const totalDrag = useRef(0);
-  const seekDoneRef = useRef(false);
-
-  // Listen for YouTube API messages to seek on ready
-  useEffect(() => {
-    const handleMessage = (e: MessageEvent) => {
-      try {
-        const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-        // YouTube fires onReady when the player is ready
-        if (data?.event === "onReady" && !seekDoneRef.current) {
-          seekDoneRef.current = true;
-          if (startTime > 0) {
-            // Seek to the correct position immediately
-            miniIframeRef.current?.contentWindow?.postMessage(
-              JSON.stringify({
-                event: "command",
-                func: "seekTo",
-                args: [startTime, true],
-              }),
-              "*",
-            );
-            // Then ensure it plays
-            setTimeout(() => {
-              miniIframeRef.current?.contentWindow?.postMessage(
-                JSON.stringify({
-                  event: "command",
-                  func: "playVideo",
-                  args: "",
-                }),
-                "*",
-              );
-            }, 150);
-          }
-          setPlayerReady(true);
-        }
-        // Track play/pause state from API
-        if (data?.event === "onStateChange") {
-          if (data.info === 1) setIsPlaying(true); // playing
-          if (data.info === 2) setIsPlaying(false); // paused
-        }
-      } catch {}
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [startTime]);
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    dragging.current = true;
-    totalDrag.current = 0;
-    startTouch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-    startPos.current = { ...pos };
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!dragging.current) return;
-    const dx = e.touches[0].clientX - startTouch.current.x;
-    const dy = e.touches[0].clientY - startTouch.current.y;
-    totalDrag.current = Math.sqrt(dx * dx + dy * dy);
-    const newX = Math.max(
-      0,
-      Math.min(window.innerWidth - MINI_W, startPos.current.x + dx),
-    );
-    const newY = Math.max(
-      0,
-      Math.min(window.innerHeight - MINI_H - 80, startPos.current.y + dy),
-    );
-    setPos({ x: newX, y: newY });
-  };
-
-  const handleTouchEnd = () => {
-    dragging.current = false;
-  };
-
-  const handleTap = () => {
-    if (totalDrag.current < 8) onExpand();
-  };
-
-  const sendIframeCommand = (func: string, args?: unknown) => {
-    miniIframeRef.current?.contentWindow?.postMessage(
-      JSON.stringify({ event: "command", func, args: args ?? "" }),
-      "*",
-    );
-  };
-
-  const handlePlayPause = (e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation();
-    if (isPlaying) {
-      sendIframeCommand("pauseVideo");
-      setIsPlaying(false);
-    } else {
-      sendIframeCommand("playVideo");
-      setIsPlaying(true);
-    }
-  };
-
-  const handleClose = (e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation();
-    setExiting(true);
-    setTimeout(() => onClose(), 280);
-  };
-
-  const handleExpand = (e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation();
-    onExpand();
-  };
-
-  // Use &start= as a hint; seekTo on onReady handles the precise seek
-  const iframeSrc = `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&mute=0&playsinline=1${startTime > 0 ? `&start=${Math.floor(startTime)}` : ""}&origin=${encodeURIComponent(window.location.origin)}`;
-
-  return (
-    <div
-      data-ocid="miniplayer.card"
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      style={{
-        position: "fixed",
-        left: pos.x,
-        top: pos.y,
-        width: MINI_W,
-        zIndex: 500,
-        borderRadius: 18,
-        overflow: "hidden",
-        touchAction: "none",
-        willChange: "transform",
-        transform: "translateZ(0)",
-        animation: exiting
-          ? "miniOut 0.28s cubic-bezier(0.32,0.72,0,1) forwards"
-          : "miniIn 0.32s cubic-bezier(0.32,0.72,0,1)",
-        userSelect: "none",
-        WebkitUserSelect: "none",
-        // Glass card
-        background: "rgba(12,12,12,0.75)",
-        backdropFilter: "blur(24px) saturate(180%)",
-        WebkitBackdropFilter: "blur(24px) saturate(180%)",
-        border: "1px solid rgba(255,255,255,0.12)",
-        boxShadow:
-          "0 12px 40px rgba(0,0,0,0.75), 0 2px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)",
-      }}
-    >
-      <style>{`
-        @keyframes miniIn {
-          from { transform: scale(0.82) translateY(28px) translateZ(0); opacity: 0; }
-          to   { transform: scale(1) translateY(0) translateZ(0); opacity: 1; }
-        }
-        @keyframes miniOut {
-          from { transform: scale(1) translateY(0) translateZ(0); opacity: 1; }
-          to   { transform: scale(0.82) translateY(28px) translateZ(0); opacity: 0; }
-        }
-        .mini-ctrl-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border: none;
-          cursor: pointer;
-          transition: background 0.15s, transform 0.1s;
-          touch-action: auto;
-          -webkit-tap-highlight-color: transparent;
-        }
-        .mini-ctrl-btn:active {
-          transform: scale(0.88);
-        }
-      `}</style>
-
-      {/* Video iframe area — tap to expand */}
-      <button
-        type="button"
-        onClick={handleTap}
-        style={{
-          width: "100%",
-          height: VIDEO_H,
-          display: "block",
-          position: "relative",
-          cursor: "pointer",
-          background: "#000",
-          border: "none",
-          padding: 0,
-          flexShrink: 0,
-        }}
-      >
-        <iframe
-          ref={miniIframeRef}
-          src={iframeSrc}
-          allow="autoplay; fullscreen; picture-in-picture"
-          allowFullScreen
-          style={{
-            width: "100%",
-            height: "100%",
-            border: "none",
-            display: "block",
-            pointerEvents: "none",
-          }}
-          title="Mini player"
-        />
-        {/* Loading overlay — hide once player ready */}
-        {!playerReady && (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              background: "rgba(0,0,0,0.5)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <div
-              style={{
-                width: 28,
-                height: 28,
-                border: "2.5px solid rgba(255,255,255,0.15)",
-                borderTopColor: "rgba(255,255,255,0.8)",
-                borderRadius: "50%",
-                animation: "miniSpin 0.7s linear infinite",
-              }}
-            />
-            <style>
-              {"@keyframes miniSpin { to { transform: rotate(360deg); } }"}
-            </style>
-          </div>
-        )}
-      </button>
-
-      {/* Glass controls bar */}
-      <div
-        style={{
-          height: CONTROLS_H,
-          display: "flex",
-          alignItems: "center",
-          padding: "0 8px",
-          gap: 4,
-          background: "rgba(255,255,255,0.06)",
-          borderTop: "1px solid rgba(255,255,255,0.08)",
-        }}
-      >
-        {/* Play/Pause */}
-        <button
-          type="button"
-          className="mini-ctrl-btn"
-          onClick={handlePlayPause}
-          data-ocid="miniplayer.toggle"
-          aria-label={isPlaying ? "Pause" : "Play"}
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: 8,
-            background: "rgba(255,255,255,0.12)",
-            color: "#fff",
-            flexShrink: 0,
-          }}
-        >
-          {isPlaying ? <IconPause /> : <IconPlay />}
-        </button>
-
-        {/* Now Playing label */}
-        <span
-          style={{
-            color: "rgba(255,255,255,0.55)",
-            fontSize: 10,
-            fontWeight: 500,
-            flex: 1,
-            overflow: "hidden",
-            whiteSpace: "nowrap",
-            textOverflow: "ellipsis",
-            letterSpacing: "0.02em",
-            paddingLeft: 4,
-          }}
-        >
-          Now Playing
-        </span>
-
-        {/* Expand button */}
-        <button
-          type="button"
-          className="mini-ctrl-btn"
-          onClick={handleExpand}
-          data-ocid="miniplayer.expand_button"
-          aria-label="Expand"
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 7,
-            background: "rgba(255,255,255,0.08)",
-            color: "rgba(255,255,255,0.75)",
-            flexShrink: 0,
-          }}
-        >
-          <IconExpand />
-        </button>
-
-        {/* Close */}
-        <button
-          type="button"
-          className="mini-ctrl-btn"
-          onClick={handleClose}
-          data-ocid="miniplayer.close_button"
-          aria-label="Close"
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 7,
-            background: "rgba(255,80,80,0.18)",
-            color: "rgba(255,255,255,0.85)",
-            flexShrink: 0,
-          }}
-        >
-          <IconClose />
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export default function App() {
   const [apiReady, setApiReady] = useState(hasApiKey);
   const [navStack, setNavStack] = useState<NavState[]>(loadPersistedState);
@@ -460,7 +73,6 @@ export default function App() {
     videoId: string;
     startTime: number;
   } | null>(() => {
-    // Restore active video from session if nav stack has a watch page
     const stack = loadPersistedState();
     const top = stack[stack.length - 1];
     if (top.page === "watch" && top.watchId) {
@@ -470,14 +82,28 @@ export default function App() {
   });
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const { canInstall, install } = usePwaInstall();
-  // Track if we're mid-minimize-animation to avoid flicker
+
+  // Mini-player drag state — use ref for position during drag, state only on end
+  const [miniPos, setMiniPos] = useState(() => ({
+    x: window.innerWidth - MINI_W - 10,
+    y: window.innerHeight - MINI_H - 86,
+  }));
+  // isDragging as state so the container style re-renders to remove transition
+  const [isDragging, setIsDragging] = useState(false);
+  const miniRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const miniDragging = useRef(false);
+  const miniDragStart = useRef({ tx: 0, ty: 0, px: 0, py: 0 });
+  const miniDragTotal = useRef(0);
 
   const current = navStack[navStack.length - 1];
   const currentPage = current.page;
   const channelId = current.channelId ?? "";
   const searchQuery = current.searchQuery ?? "";
-
   const isWatchPage = currentPage === "watch";
+  const miniScale =
+    MINI_W / (typeof window !== "undefined" ? window.innerWidth : 390);
+  const watchId = current.watchId ?? "";
 
   // Persist nav stack
   useEffect(() => {
@@ -486,7 +112,6 @@ export default function App() {
     } catch {}
   }, [navStack]);
 
-  // Persist background nav stack
   useEffect(() => {
     try {
       sessionStorage.setItem(
@@ -503,9 +128,7 @@ export default function App() {
       setNavStack((prev) => {
         if (prev.length > 1) {
           window.history.pushState({ depth: prev.length - 2 }, "");
-          const next = prev.slice(0, -1);
-          // If we're popping off a watch page, keep activeVideo (miniplayer remains)
-          return next;
+          return prev.slice(0, -1);
         }
         window.history.pushState({ depth: 0 }, "");
         return prev;
@@ -533,7 +156,6 @@ export default function App() {
 
   const handleWatch = useCallback((id: string, resumeTime?: number) => {
     const st = resumeTime || 0;
-    // Save current (non-watch) stack as background before going to watch
     setNavStack((prev) => {
       const isCurrentlyWatch = prev[prev.length - 1].page === "watch";
       if (!isCurrentlyWatch) {
@@ -542,6 +164,11 @@ export default function App() {
       return [...prev, { page: "watch", watchId: id, watchStartTime: st }];
     });
     setActiveVideo({ videoId: id, startTime: st });
+    // Reset mini position to default bottom-right for the new video
+    setMiniPos({
+      x: window.innerWidth - MINI_W - 10,
+      y: window.innerHeight - MINI_H - 86,
+    });
     window.history.pushState({ depth: 1 }, "");
   }, []);
 
@@ -552,14 +179,22 @@ export default function App() {
     [pushPage],
   );
 
+  // Minimize: just pop nav stack — do NOT change startTime or reload iframe
   const handleMinimize = useCallback(
-    (currentTime: number) => {
-      setActiveVideo((prev) =>
-        prev ? { ...prev, startTime: currentTime } : null,
-      );
+    (_currentTime: number) => {
+      // Reset mini card position to bottom-right
+      const newPos = {
+        x: window.innerWidth - MINI_W - 10,
+        y: window.innerHeight - MINI_H - 86,
+      };
+      setMiniPos(newPos);
+      // Also immediately update the ref'd element position if it exists
+      if (miniRef.current) {
+        miniRef.current.style.left = `${newPos.x}px`;
+        miniRef.current.style.top = `${newPos.y}px`;
+      }
       setNavStack((prev) => {
         if (prev.length > 1) return prev.slice(0, -1);
-        // If only watch page in stack, go back to background
         return backgroundNavStack.length > 0
           ? backgroundNavStack
           : [{ page: "home" }];
@@ -568,12 +203,12 @@ export default function App() {
     [backgroundNavStack],
   );
 
+  // Expand: push watch page back — use same startTime so iframe src doesn't change
   const handleExpand = useCallback(() => {
     if (!activeVideo) return;
     setNavStack((prev) => {
       const top = prev[prev.length - 1];
       if (top.page === "watch") return prev;
-      // Save current as background
       setBackgroundNavStack([...prev]);
       return [
         ...prev,
@@ -595,6 +230,74 @@ export default function App() {
     });
   }, []);
 
+  // Mini-player drag handlers — DOM manipulation during drag, state update only on end
+  const handleMiniTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      miniDragging.current = true;
+      miniDragTotal.current = 0;
+      miniDragStart.current = {
+        tx: e.touches[0].clientX,
+        ty: e.touches[0].clientY,
+        px: miniPos.x,
+        py: miniPos.y,
+      };
+      setIsDragging(true);
+    },
+    [miniPos],
+  );
+
+  const handleMiniTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!miniDragging.current) return;
+    e.preventDefault();
+    const dx = e.touches[0].clientX - miniDragStart.current.tx;
+    const dy = e.touches[0].clientY - miniDragStart.current.ty;
+    miniDragTotal.current = Math.sqrt(dx * dx + dy * dy);
+    const newX = Math.max(
+      0,
+      Math.min(window.innerWidth - MINI_W, miniDragStart.current.px + dx),
+    );
+    const newY = Math.max(
+      0,
+      Math.min(window.innerHeight - MINI_H - 60, miniDragStart.current.py + dy),
+    );
+    const scale = MINI_W / window.innerWidth;
+    const iw = window.innerWidth;
+    const ih = window.innerHeight;
+    // Direct DOM manipulation — zero React re-render overhead
+    if (miniRef.current) {
+      miniRef.current.style.left = `${newX}px`;
+      miniRef.current.style.top = `${newY}px`;
+    }
+    if (innerRef.current) {
+      innerRef.current.style.transform = `translate3d(${newX}px, ${newY}px, 0) scale(${scale})`;
+    }
+    const outerDiv = innerRef.current?.parentElement;
+    if (outerDiv) {
+      outerDiv.style.clipPath = `inset(${newY}px ${Math.max(0, iw - newX - MINI_W)}px ${Math.max(0, ih - newY - MINI_H)}px ${newX}px round 16px)`;
+    }
+  }, []);
+
+  const handleMiniTouchEnd = useCallback(() => {
+    miniDragging.current = false;
+    setIsDragging(false);
+    // Sync state with current DOM position so next render is correct
+    if (miniRef.current) {
+      const left =
+        Number.parseFloat(miniRef.current.style.left) ||
+        miniDragStart.current.px;
+      const top =
+        Number.parseFloat(miniRef.current.style.top) ||
+        miniDragStart.current.py;
+      setMiniPos({ x: left, y: top });
+    }
+  }, []);
+
+  const handleMiniTap = useCallback(() => {
+    if (miniDragTotal.current < 8) {
+      handleExpand();
+    }
+  }, [handleExpand]);
+
   if (!apiReady) {
     return (
       <>
@@ -604,7 +307,6 @@ export default function App() {
     );
   }
 
-  // Render page behind the watch overlay (background page when watch is active)
   function renderBackgroundPage(state: NavState) {
     const { page, channelId: cId, searchQuery: sq } = state;
     if (page === "channel" && cId) {
@@ -655,7 +357,6 @@ export default function App() {
 
   function renderPage() {
     if (currentPage === "watch") {
-      // Render background page behind the overlay
       const bgState = backgroundNavStack[backgroundNavStack.length - 1] || {
         page: "home",
       };
@@ -707,10 +408,11 @@ export default function App() {
     );
   }
 
-  // Bottom nav: show background page's page when watch is active
   const navPage = isWatchPage
     ? backgroundNavStack[backgroundNavStack.length - 1]?.page || "home"
     : currentPage;
+
+  // Two-div clip-path architecture for GPU-composited mini-player transition
 
   return (
     <div className="min-h-screen" style={{ background: "#000000" }}>
@@ -819,66 +521,118 @@ export default function App() {
         {renderPage()}
       </main>
 
-      {/* Full-screen WatchPage overlay — only visible when isWatchPage */}
+      {/* Persistent WatchPage overlay — animates between full-screen and mini-card.
+          NEVER unmounts when activeVideo exists (same videoId) — this keeps the
+          iframe alive and playing with zero restart or buffering. */}
       <style>{`
         @keyframes slideUp {
           from { transform: translateY(100%) scale(0.95) translateZ(0); opacity: 0; }
           to   { transform: translateY(0) scale(1) translateZ(0); opacity: 1; }
         }
-        .watch-page-enter { animation: slideUp 0.35s cubic-bezier(0.32,0.72,0,1) forwards; }
+        .watch-enter { animation: slideUp 0.38s cubic-bezier(0.32,0.72,0,1) forwards; }
       `}</style>
+
       {activeVideo && (
-        <div
-          data-ocid="player.panel"
-          key={activeVideo.videoId}
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 400,
-            display: isWatchPage ? "flex" : "none",
-            flexDirection: "column",
-            willChange: "transform",
-            background: "#000",
-          }}
-          className={isWatchPage ? "watch-page-enter" : ""}
-        >
+        <>
+          {/* OUTER: always fixed full-screen. clip-path transitions the visible area. */}
           <div
+            data-ocid="player.panel"
+            className={isWatchPage ? "watch-enter" : ""}
             style={{
-              position: "relative",
-              height: "100%",
-              overflow: "hidden",
+              position: "fixed",
+              top: 0,
+              left: 0,
+              width: "100vw",
+              height: "100vh",
+              zIndex: 400,
+              pointerEvents: isWatchPage ? "auto" : "none",
+              clipPath: isWatchPage
+                ? "inset(0px 0px 0px 0px round 0px)"
+                : `inset(${miniPos.y}px ${Math.max(0, window.innerWidth - miniPos.x - MINI_W)}px ${Math.max(0, window.innerHeight - miniPos.y - MINI_H)}px ${miniPos.x}px round 16px)`,
+              transition: isDragging
+                ? "none"
+                : "clip-path 0.35s cubic-bezier(0.32,0.72,0,1)",
+              willChange: "clip-path",
             }}
           >
-            <WatchPage
-              videoId={activeVideo.videoId}
-              onWatch={handleWatch}
-              onChannelClick={handleChannelClick}
-              startTime={activeVideo.startTime}
-              isMini={false}
-              isVisible={isWatchPage}
-              onMinimize={handleMinimize}
-              onExpand={handleExpand}
-              onClose={handleClose}
-            />
+            {/* INNER: full-screen size always, transform scales+moves content to mini */}
+            <div
+              ref={innerRef}
+              key={activeVideo.videoId}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100vw",
+                height: "100vh",
+                background: "#000",
+                transformOrigin: "top left",
+                transform: isWatchPage
+                  ? "translate3d(0,0,0) scale(1)"
+                  : `translate3d(${miniPos.x}px, ${miniPos.y}px, 0) scale(${miniScale})`,
+                transition: isDragging
+                  ? "none"
+                  : "transform 0.35s cubic-bezier(0.32,0.72,0,1)",
+                willChange: "transform",
+                overflow: "hidden",
+                ...(isWatchPage
+                  ? {
+                      borderRadius: 0,
+                      boxShadow: "none",
+                      border: "none",
+                    }
+                  : {
+                      borderRadius: `${16 / miniScale}px`,
+                      border: `${1 / miniScale}px solid rgba(255,255,255,0.14)`,
+                      boxShadow: `0 ${12 / miniScale}px ${40 / miniScale}px rgba(0,0,0,0.8)`,
+                    }),
+              }}
+            >
+              <WatchPage
+                videoId={watchId || activeVideo.videoId}
+                startTime={current.watchStartTime ?? activeVideo.startTime}
+                isMini={!isWatchPage}
+                onWatch={handleWatch}
+                onChannelClick={handleChannelClick}
+                onMinimize={handleMinimize}
+                onExpand={handleExpand}
+                onClose={handleClose}
+              />
+            </div>
           </div>
-        </div>
+
+          {/* MINI OVERLAY: transparent interaction layer for drag/tap when in mini mode */}
+          {!isWatchPage && (
+            <div
+              ref={miniRef}
+              style={{
+                position: "fixed",
+                top: miniPos.y,
+                left: miniPos.x,
+                width: MINI_W,
+                height: MINI_H,
+                zIndex: 401,
+                background: "transparent",
+                cursor: isDragging ? "grabbing" : "grab",
+                touchAction: "none",
+                borderRadius: 16,
+              }}
+              onTouchStart={handleMiniTouchStart}
+              onTouchMove={handleMiniTouchMove}
+              onTouchEnd={handleMiniTouchEnd}
+              onClick={handleMiniTap}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") handleMiniTap();
+              }}
+              role="button"
+              tabIndex={0}
+              aria-label="Expand player"
+            />
+          )}
+        </>
       )}
 
-      {/* Floating MiniPlayerCard — shown when video is active but not on watch page */}
-      {activeVideo && !isWatchPage && (
-        <MiniPlayerCard
-          key={`${activeVideo.videoId}-${activeVideo.startTime}`}
-          videoId={activeVideo.videoId}
-          startTime={activeVideo.startTime}
-          onExpand={handleExpand}
-          onClose={handleClose}
-        />
-      )}
-
-      <BottomNav currentPage={navPage} onNavigate={handleNavigate} />
+      <BottomNav currentPage={navPage as Page} onNavigate={handleNavigate} />
       <Toaster />
     </div>
   );

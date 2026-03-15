@@ -140,6 +140,14 @@ function formatDate(iso: string): string {
 
 const PAGE_SIZE = 10;
 
+// Video size presets
+const VIDEO_SIZES = [
+  { label: "S", title: "Compact", padding: "12px 28px 0" },
+  { label: "M", title: "Normal", padding: "12px 12px 0" },
+  { label: "L", title: "Large", padding: "12px 4px 0" },
+  { label: "⬛", title: "Cinema", padding: "8px 0 0" },
+];
+
 export function WatchPage({
   videoId,
   onWatch,
@@ -147,9 +155,8 @@ export function WatchPage({
   startTime = 0,
   isMini = false,
   onMinimize,
-  isVisible = true,
-  onExpand: _onExpand,
-  onClose: _onClose,
+  onExpand,
+  onClose,
 }: WatchPageProps) {
   const [video, setVideo] = useState<YouTubeVideo | null>(null);
   const [allRelated, setAllRelated] = useState<YouTubeSearchResult[]>([]);
@@ -160,16 +167,22 @@ export function WatchPage({
   const [relatedLoading, setRelatedLoading] = useState(true);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [descExpanded, setDescExpanded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [subscribed, setSubscribed] = useState(false);
-  const [channelSubscriberCount, setChannelSubscriberCount] = useState<
-    string | null
-  >(null);
+  const [channelSubscriberCount, setChannelSubscriberCount] = useState("");
   const [playerHovered, setPlayerHovered] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fsAnimating, setFsAnimating] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [miniPlaying, setMiniPlaying] = useState(true);
+
+  // Video size controls
+  const [videoSizeIndex, setVideoSizeIndex] = useState(1); // 0=compact,1=normal,2=large,3=cinema
+  const [sizeControlsVisible, setSizeControlsVisible] = useState(false);
+  const [tapOverlayEnabled, setTapOverlayEnabled] = useState(true);
+  const sizeHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const ambientCanvasRef = useRef<HTMLCanvasElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const playerCardRef = useRef<HTMLDivElement>(null);
@@ -181,6 +194,32 @@ export function WatchPage({
   const hasScrolledRef = useRef(false);
 
   useAmbientMode(videoId, ambientCanvasRef);
+
+  // Show size controls and reset auto-hide timer
+  function showSizeControls() {
+    setSizeControlsVisible(true);
+    if (sizeHideTimer.current) clearTimeout(sizeHideTimer.current);
+    sizeHideTimer.current = setTimeout(
+      () => setSizeControlsVisible(false),
+      3000,
+    );
+  }
+
+  // Clean up size hide timer on unmount
+  useEffect(() => {
+    return () => {
+      if (sizeHideTimer.current) clearTimeout(sizeHideTimer.current);
+    };
+  }, []);
+
+  // Reset swipe animation styles when isMini becomes true (prevents black screen)
+  useEffect(() => {
+    if (isMini && swipeContainerRef.current) {
+      swipeContainerRef.current.style.transition = "none";
+      swipeContainerRef.current.style.transform = "";
+      swipeContainerRef.current.style.opacity = "";
+    }
+  }, [isMini]);
 
   // Scroll-past-video miniplayer trigger
   useEffect(() => {
@@ -248,10 +287,12 @@ export function WatchPage({
         if (data?.event === "onStateChange") {
           if (data.info === 1) {
             isPlayingRef.current = true;
+            setMiniPlaying(true);
             startTimeRef.current =
               Date.now() - (currentResumeRef.current - startTime) * 1000;
           } else if (data.info === 2 || data.info === 0) {
             isPlayingRef.current = false;
+            setMiniPlaying(false);
           }
         }
       } catch {
@@ -362,16 +403,6 @@ export function WatchPage({
     };
   }, [videoId, startTime]);
 
-  // Pause main iframe when miniplayer is active
-  useEffect(() => {
-    if (isVisible === false) {
-      iframeRef.current?.contentWindow?.postMessage(
-        JSON.stringify({ event: "command", func: "pauseVideo", args: "" }),
-        "*",
-      );
-    }
-  }, [isVisible]);
-
   // Load comments when section is opened
   async function handleToggleComments() {
     const willOpen = !commentsOpen;
@@ -459,6 +490,7 @@ export function WatchPage({
   const swipeAnimating = useRef(false);
 
   const handleSwipeTouchStart = (e: React.TouchEvent) => {
+    if (isMini) return;
     dragStartY.current = e.touches[0].clientY;
     swipeDragX.current = e.touches[0].clientX;
     swipeAnimating.current = false;
@@ -468,43 +500,46 @@ export function WatchPage({
   };
 
   const handleSwipeTouchMove = (e: React.TouchEvent) => {
-    const el = swipeContainerRef.current;
-    if (!el) return;
-    const scrollTop = el.scrollTop || 0;
-    const deltaY = e.touches[0].clientY - dragStartY.current;
-    const deltaX = Math.abs(e.touches[0].clientX - swipeDragX.current);
-    // Only intercept downward swipes at top of scroll and more vertical than horizontal
-    if (deltaY > 0 && scrollTop <= 0 && deltaY > deltaX) {
-      const translateY = Math.min(deltaY * 0.4, 80);
-      el.style.transform = `translateY(${translateY}px) translateZ(0)`;
+    if (isMini) return;
+    const dy = e.touches[0].clientY - dragStartY.current;
+    const dx = e.touches[0].clientX - swipeDragX.current;
+    if (Math.abs(dy) > Math.abs(dx) && dy > 0 && swipeContainerRef.current) {
+      const progress = Math.min(1, dy / 260);
+      const scale = 1 - progress * 0.12;
+      const opacity = 1 - progress * 0.3;
+      swipeContainerRef.current.style.transform = `translateY(${dy * 0.55}px) scale(${scale}) translateZ(0)`;
+      swipeContainerRef.current.style.opacity = String(opacity);
     }
   };
 
   const handleSwipeTouchEnd = (e: React.TouchEvent) => {
-    const el = swipeContainerRef.current;
-    if (!el) return;
-    const deltaY = e.changedTouches[0].clientY - dragStartY.current;
-    if (deltaY > 80) {
-      onMinimize?.(currentResumeRef.current);
-      el.style.transition = "none";
-      el.style.transform = "translateZ(0)";
+    if (isMini) return;
+    const dy = e.changedTouches[0].clientY - dragStartY.current;
+    if (dy > 80 && !swipeAnimating.current) {
+      swipeAnimating.current = true;
+      if (swipeContainerRef.current) {
+        swipeContainerRef.current.style.transition =
+          "transform 0.28s cubic-bezier(0.32,0.72,0,1), opacity 0.28s ease";
+        swipeContainerRef.current.style.transform =
+          "translateY(100%) scale(0.88) translateZ(0)";
+        swipeContainerRef.current.style.opacity = "0";
+      }
+      setTimeout(() => onMinimize?.(currentResumeRef.current), 260);
     } else {
-      el.style.transition = "transform 0.3s cubic-bezier(0.32,0.72,0,1)";
-      el.style.transform = "translateY(0) translateZ(0)";
+      if (swipeContainerRef.current) {
+        swipeContainerRef.current.style.transition =
+          "transform 0.32s cubic-bezier(0.22,1,0.36,1), opacity 0.32s ease";
+        swipeContainerRef.current.style.transform =
+          "translateY(0) scale(1) translateZ(0)";
+        swipeContainerRef.current.style.opacity = "1";
+      }
     }
   };
 
-  if (error) {
-    return (
-      <div className="p-8 text-center" data-ocid="video.error_state">
-        <p style={{ color: "#ff5555" }}>{error}</p>
-      </div>
-    );
-  }
-
-  const avatarColor = video ? getAvatarColor(video.channelTitle) : "#ff0000";
-
   const iframeSrc = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1&enablejsapi=1${startTime > 0 ? `&start=${startTime}` : ""}`;
+
+  // Current size padding
+  const currentPadding = isMini ? "0" : VIDEO_SIZES[videoSizeIndex].padding;
 
   return (
     <div
@@ -552,8 +587,7 @@ export function WatchPage({
           }
           style={{
             position: "relative",
-            padding: "12px 12px 0",
-            paddingTop: isMini ? 0 : 12,
+            padding: currentPadding,
             transition: "padding 0.38s cubic-bezier(0.22,1,0.36,1)",
             willChange: "transform, opacity",
           }}
@@ -592,6 +626,15 @@ export function WatchPage({
             <div
               ref={playerCardRef}
               id="player-card-inner"
+              onClick={!isMini ? showSizeControls : undefined}
+              onKeyDown={
+                !isMini
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ")
+                        showSizeControls();
+                    }
+                  : undefined
+              }
               style={{
                 borderRadius: isMini ? 0 : 12,
                 overflow: "hidden",
@@ -609,6 +652,7 @@ export function WatchPage({
                 aspectRatio: "16/9",
                 background: "#000",
                 position: "relative",
+                cursor: "pointer",
               }}
             >
               {/* Reflective top-edge highlight */}
@@ -637,11 +681,274 @@ export function WatchPage({
                 title="YouTube video player"
               />
 
+              {/* Transparent tap-intercept overlay — catches taps to show size controls.
+                  Sits above iframe (which swallows all pointer events) but below mini controls. */}
+              {!isMini && tapOverlayEnabled && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    zIndex: 8,
+                    background: "transparent",
+                    cursor: "default",
+                  }}
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    showSizeControls();
+                    setTapOverlayEnabled(false);
+                    setTimeout(() => setTapOverlayEnabled(true), 3200);
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    showSizeControls();
+                    setTapOverlayEnabled(false);
+                    setTimeout(() => setTapOverlayEnabled(true), 3200);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.stopPropagation();
+                      showSizeControls();
+                      setTapOverlayEnabled(false);
+                      setTimeout(() => setTapOverlayEnabled(true), 3200);
+                    }
+                  }}
+                />
+              )}
+
+              {/* Mini mode controls overlay */}
+              {isMini && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    zIndex: 30,
+                    background:
+                      "linear-gradient(to bottom, transparent 45%, rgba(0,0,0,0.82))",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "flex-end",
+                    pointerEvents: "none",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "5px 8px 7px",
+                      pointerEvents: "auto",
+                    }}
+                  >
+                    {/* Play/Pause */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (miniPlaying) {
+                          iframeRef.current?.contentWindow?.postMessage(
+                            JSON.stringify({
+                              event: "command",
+                              func: "pauseVideo",
+                              args: "",
+                            }),
+                            "*",
+                          );
+                          setMiniPlaying(false);
+                        } else {
+                          iframeRef.current?.contentWindow?.postMessage(
+                            JSON.stringify({
+                              event: "command",
+                              func: "playVideo",
+                              args: "",
+                            }),
+                            "*",
+                          );
+                          setMiniPlaying(true);
+                        }
+                      }}
+                      aria-label={miniPlaying ? "Pause" : "Play"}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 7,
+                        background: "rgba(255,255,255,0.12)",
+                        border: "none",
+                        color: "#fff",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {miniPlaying ? (
+                        <svg
+                          aria-hidden="true"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                        >
+                          <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                        </svg>
+                      ) : (
+                        <svg
+                          aria-hidden="true"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="currentColor"
+                        >
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      )}
+                    </button>
+
+                    {/* Expand */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onExpand?.();
+                      }}
+                      aria-label="Expand"
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 7,
+                        background: "rgba(255,255,255,0.12)",
+                        border: "none",
+                        color: "#fff",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <svg
+                        aria-hidden="true"
+                        width="13"
+                        height="13"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+                      </svg>
+                    </button>
+
+                    {/* Close */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClose?.();
+                      }}
+                      aria-label="Close"
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 7,
+                        background: "rgba(255,255,255,0.12)",
+                        border: "none",
+                        color: "#fff",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <svg
+                        aria-hidden="true"
+                        width="13"
+                        height="13"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Video size adjustment controls (full-screen mode only) */}
+              {!isMini && (
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: 44,
+                    left: 8,
+                    zIndex: 25,
+                    display: "flex",
+                    gap: 6,
+                    opacity: sizeControlsVisible ? 1 : 0,
+                    transform: sizeControlsVisible
+                      ? "scale(1) translateY(0)"
+                      : "scale(0.88) translateY(6px)",
+                    transition: "opacity 0.3s ease, transform 0.3s ease",
+                    pointerEvents: sizeControlsVisible ? "auto" : "none",
+                  }}
+                  data-ocid="player.size.panel"
+                >
+                  {VIDEO_SIZES.map((s, i) => (
+                    <button
+                      key={s.title}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setVideoSizeIndex(i);
+                        showSizeControls();
+                      }}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 10,
+                        background:
+                          videoSizeIndex === i
+                            ? "rgba(200,0,0,0.75)"
+                            : "rgba(0,0,0,0.62)",
+                        backdropFilter: "blur(14px)",
+                        WebkitBackdropFilter: "blur(14px)",
+                        border: `1px solid ${
+                          videoSizeIndex === i
+                            ? "rgba(255,80,80,0.5)"
+                            : "rgba(255,255,255,0.22)"
+                        }`,
+                        color: "#fff",
+                        fontSize: videoSizeIndex === i ? 12 : 11,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        boxShadow:
+                          videoSizeIndex === i
+                            ? "0 2px 16px rgba(200,0,0,0.4), 0 1px 4px rgba(0,0,0,0.5)"
+                            : "0 2px 12px rgba(0,0,0,0.5)",
+                        transition:
+                          "background 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, font-size 0.15s ease",
+                        transform:
+                          videoSizeIndex === i ? "scale(1.08)" : "scale(1)",
+                      }}
+                      title={s.title}
+                      data-ocid="player.size.button"
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* Miniplayer button overlay */}
               {!isMini && onMinimize && (
                 <button
                   type="button"
-                  onClick={() => onMinimize?.(currentResumeRef.current)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMinimize?.(currentResumeRef.current);
+                  }}
                   aria-label="Miniplayer"
                   data-ocid="player.miniplayer.button"
                   style={{
@@ -670,7 +977,10 @@ export function WatchPage({
               {!isMini && (
                 <button
                   type="button"
-                  onClick={handleFullscreen}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleFullscreen();
+                  }}
                   aria-label="Fullscreen"
                   data-ocid="player.fullscreen.button"
                   style={{
@@ -747,6 +1057,13 @@ export function WatchPage({
                 className="yt-skeleton h-4 w-1/2"
                 style={{ borderRadius: 4 }}
               />
+            </div>
+          ) : error ? (
+            <div
+              data-ocid="video.error_state"
+              style={{ color: "#f44", padding: "12px 0", fontSize: 13 }}
+            >
+              {error}
             </div>
           ) : video ? (
             <>
@@ -868,9 +1185,8 @@ export function WatchPage({
                         width: 36,
                         height: 36,
                         borderRadius: "50%",
+                        border: "1.5px solid rgba(255,255,255,0.15)",
                         objectFit: "cover",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                        flexShrink: 0,
                       }}
                     />
                   ) : (
@@ -879,17 +1195,17 @@ export function WatchPage({
                         width: 36,
                         height: 36,
                         borderRadius: "50%",
-                        background: avatarColor,
+                        background: getAvatarColor(video.channelTitle),
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontSize: 16,
-                        fontWeight: 700,
                         color: "#fff",
+                        fontSize: 15,
+                        fontWeight: 700,
                         flexShrink: 0,
                       }}
                     >
-                      {video.channelTitle[0]?.toUpperCase()}
+                      {video.channelTitle.charAt(0).toUpperCase()}
                     </div>
                   )}
                   <div style={{ textAlign: "left" }}>
@@ -898,7 +1214,6 @@ export function WatchPage({
                         fontSize: 14,
                         fontWeight: 600,
                         color: "#f1f1f1",
-                        lineHeight: 1.3,
                       }}
                     >
                       {video.channelTitle}
@@ -907,8 +1222,7 @@ export function WatchPage({
                       <div
                         style={{
                           fontSize: 12,
-                          color: "#717171",
-                          marginTop: 1,
+                          color: "#aaa",
                           textAlign: "left",
                         }}
                       >
@@ -923,13 +1237,11 @@ export function WatchPage({
                   onClick={() => setSubscribed((s) => !s)}
                   data-ocid="player.subscribe.toggle"
                   style={{
-                    background: subscribed
-                      ? "rgba(255,255,255,0.1)"
-                      : "rgba(255,0,0,0.85)",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: 20,
                     padding: "7px 16px",
+                    borderRadius: 20,
+                    background: subscribed ? "#333" : "#fff",
+                    color: subscribed ? "#fff" : "#000",
+                    border: "none",
                     fontSize: 13,
                     fontWeight: 700,
                     cursor: "pointer",
@@ -1161,11 +1473,8 @@ export function WatchPage({
               data-ocid="comments.list"
             >
               {commentsLoading ? (
-                <div
-                  style={{ padding: "8px 12px" }}
-                  data-ocid="comments.loading_state"
-                >
-                  {Array.from({ length: 4 }).map((_, i) => (
+                <div style={{ padding: "0 12px 8px" }}>
+                  {Array.from({ length: 5 }).map((_, i) => (
                     // biome-ignore lint/suspicious/noArrayIndexKey: skeleton
                     <CommentSkeleton key={i} />
                   ))}
@@ -1175,14 +1484,14 @@ export function WatchPage({
                   style={{
                     fontSize: 13,
                     color: "#717171",
-                    padding: "8px 12px 16px",
+                    padding: "4px 12px 12px",
                   }}
                   data-ocid="comments.empty_state"
                 >
                   No comments available.
                 </p>
               ) : (
-                <div style={{ padding: "0 12px" }}>
+                <div style={{ padding: "0 12px 4px" }}>
                   {comments.map((c, i) => (
                     <div
                       key={c.id}
@@ -1190,37 +1499,36 @@ export function WatchPage({
                       style={{ marginBottom: 16 }}
                       data-ocid={i < 3 ? `comments.item.${i + 1}` : undefined}
                     >
-                      {c.authorAvatar ? (
-                        <img
-                          src={c.authorAvatar}
-                          alt={c.authorName}
-                          style={{
-                            width: 32,
-                            height: 32,
-                            borderRadius: "50%",
-                            objectFit: "cover",
-                            flexShrink: 0,
-                          }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            width: 32,
-                            height: 32,
-                            borderRadius: "50%",
-                            background: getAvatarColor(c.authorName),
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: 13,
-                            fontWeight: 700,
-                            color: "#fff",
-                            flexShrink: 0,
-                          }}
-                        >
-                          {c.authorName[0]?.toUpperCase()}
-                        </div>
-                      )}
+                      <div
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: "50%",
+                          background: getAvatarColor(c.authorName),
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "#fff",
+                          fontSize: 13,
+                          fontWeight: 700,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {c.authorAvatar ? (
+                          <img
+                            src={c.authorAvatar}
+                            alt={c.authorName}
+                            style={{
+                              width: 32,
+                              height: 32,
+                              borderRadius: "50%",
+                              objectFit: "cover",
+                            }}
+                          />
+                        ) : (
+                          c.authorName.charAt(0).toUpperCase()
+                        )}
+                      </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                           className="flex items-center gap-2"

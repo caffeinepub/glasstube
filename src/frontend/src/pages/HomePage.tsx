@@ -165,8 +165,7 @@ export function HomePage({
           position: "sticky",
           top: "calc(64px + env(safe-area-inset-top, 0px))",
           zIndex: 10,
-          background: "rgba(0,0,0,0.45)",
-          backdropFilter: "blur(20px) saturate(180%)",
+          background: "#000000",
           WebkitBackdropFilter: "blur(20px) saturate(180%)",
           // border removed
         }}
