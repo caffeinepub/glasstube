@@ -4,6 +4,7 @@ import {
   type YouTubeVideo,
   getYtThumbnail,
 } from "@/lib/youtube";
+import { useState } from "react";
 
 type VideoData = YouTubeVideo | YouTubeSearchResult;
 interface VideoCardProps {
@@ -44,6 +45,7 @@ export function VideoCard({
   const avatarColor = getAvatarColor(video.channelTitle);
   const initial = video.channelTitle.charAt(0).toUpperCase();
   const fallbackThumb = getYtThumbnail(video.id);
+  const [pressed, setPressed] = useState(false);
 
   return (
     <div
@@ -54,6 +56,11 @@ export function VideoCard({
     >
       {/* Glass card wrapper */}
       <div
+        onMouseDown={() => setPressed(true)}
+        onMouseUp={() => setPressed(false)}
+        onMouseLeave={() => setPressed(false)}
+        onTouchStart={() => setPressed(true)}
+        onTouchEnd={() => setPressed(false)}
         style={{
           borderRadius: 16,
           overflow: "hidden",
@@ -63,6 +70,12 @@ export function VideoCard({
           border: "1px solid rgba(255,255,255,0.12)",
           boxShadow:
             "0 4px 24px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.10)",
+          transform: pressed ? "scale(0.96)" : "scale(1)",
+          filter: pressed ? "brightness(0.85)" : "brightness(1)",
+          transition: pressed
+            ? "transform 100ms ease-out, filter 100ms ease-out"
+            : "transform 300ms cubic-bezier(0.34,1.56,0.64,1), filter 300ms ease-out",
+          willChange: "transform",
         }}
       >
         {/* Thumbnail */}

@@ -259,20 +259,26 @@ export async function searchVideos(
 
   const ids = rawResults.map((v: any) => v.id).join(",");
   let availableIds = new Set<string>(rawResults.map((v: any) => v.id));
+  // Fetch contentDetails + status to get duration and filter unavailable
+  const durationMap: Record<string, string> = {};
   try {
-    const vUrl = `${BASE}/videos?part=status&id=${ids}&key=${key}`;
+    const vUrl = `${BASE}/videos?part=contentDetails,status&id=${ids}&key=${key}`;
     const vRes = await fetch(vUrl);
     if (vRes.ok) {
       const vData = await vRes.json();
-      availableIds = new Set(
-        (vData.items || []).filter(isAvailable).map((i: any) => i.id),
-      );
+      const available = (vData.items || []).filter(isAvailable);
+      availableIds = new Set(available.map((i: any) => i.id));
+      for (const item of available) {
+        durationMap[item.id] = parseDuration(
+          item.contentDetails?.duration || "",
+        );
+      }
     }
   } catch {}
 
-  const results: YouTubeSearchResult[] = rawResults.filter((v: any) =>
-    availableIds.has(v.id),
-  );
+  const results: YouTubeSearchResult[] = rawResults
+    .filter((v: any) => availableIds.has(v.id))
+    .map((v: any) => ({ ...v, duration: durationMap[v.id] || "" }));
   const channelIds = [...new Set(results.map((v) => v.channelId))];
   const thumbs = await fetchChannelThumbnails(channelIds);
   const final = results.map((v) => ({
@@ -341,7 +347,7 @@ export async function fetchRelatedVideos(
     } catch {}
   }
 
-  // Fallback: search by keywords extracted from videoId-related content, or general trending
+  // Fallback: general trending
   try {
     const trending = await fetchTrending();
     const filtered = trending
@@ -429,18 +435,25 @@ export async function fetchInterestVideos(
           });
           const ids = rawResults.map((v: any) => v.id).join(",");
           let availableIds = new Set<string>(rawResults.map((v: any) => v.id));
+          const durMap: Record<string, string> = {};
           try {
             const vRes = await fetch(
-              `${BASE}/videos?part=status&id=${ids}&key=${key}`,
+              `${BASE}/videos?part=contentDetails,status&id=${ids}&key=${key}`,
             );
             if (vRes.ok) {
               const vData = await vRes.json();
-              availableIds = new Set(
-                (vData.items || []).filter(isAvailable).map((i: any) => i.id),
-              );
+              const avail = (vData.items || []).filter(isAvailable);
+              availableIds = new Set(avail.map((i: any) => i.id));
+              for (const item of avail) {
+                durMap[item.id] = parseDuration(
+                  item.contentDetails?.duration || "",
+                );
+              }
             }
           } catch {}
-          const results = rawResults.filter((v: any) => availableIds.has(v.id));
+          const results = rawResults
+            .filter((v: any) => availableIds.has(v.id))
+            .map((v: any) => ({ ...v, duration: durMap[v.id] || "" }));
           if (results.length >= 6) {
             const channelIds = [
               ...new Set<string>(
@@ -513,18 +526,23 @@ export async function fetchChannelVideos(channelId: string): Promise<{
   });
   const ids = rawVideos.map((v: any) => v.id).join(",");
   let availableIds = new Set<string>(rawVideos.map((v: any) => v.id));
+  const durMap: Record<string, string> = {};
   try {
-    const vRes = await fetch(`${BASE}/videos?part=status&id=${ids}&key=${key}`);
+    const vRes = await fetch(
+      `${BASE}/videos?part=contentDetails,status&id=${ids}&key=${key}`,
+    );
     if (vRes.ok) {
       const vData = await vRes.json();
-      availableIds = new Set(
-        (vData.items || []).filter(isAvailable).map((i: any) => i.id),
-      );
+      const avail = (vData.items || []).filter(isAvailable);
+      availableIds = new Set(avail.map((i: any) => i.id));
+      for (const item of avail) {
+        durMap[item.id] = parseDuration(item.contentDetails?.duration || "");
+      }
     }
   } catch {}
-  const videos: YouTubeSearchResult[] = rawVideos.filter((v: any) =>
-    availableIds.has(v.id),
-  );
+  const videos: YouTubeSearchResult[] = rawVideos
+    .filter((v: any) => availableIds.has(v.id))
+    .map((v: any) => ({ ...v, duration: durMap[v.id] || "" }));
   const result = { channel, videos };
   cacheSet(cacheKey, result, CHANNEL_TTL_MS);
   return result;

@@ -98,16 +98,18 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
         boxShadow: "none",
       }}
     >
-      {/* 64px content row — search bar is a regular flex child so alignItems:center guarantees true vertical center */}
+      {/* 64px content row */}
       <div
         style={{
           display: "flex",
+          flexDirection: "row",
           alignItems: "center",
           height: 64,
           paddingLeft: 6,
           paddingRight: 10,
           boxSizing: "border-box",
           width: "100%",
+          overflow: "hidden",
         }}
       >
         {/* Logo + Brand */}
@@ -204,14 +206,18 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
         </button>
 
         {/* Spacer pushes search to the right */}
-        <div style={{ flex: 1 }} />
+        <div style={{ flex: 1, minWidth: 0 }} />
 
-        {/* Search bar — plain flex child, centered by parent alignItems:center */}
+        {/* Search bar wrapper — alignSelf:center + explicit height locks it to exact vertical center */}
         <div
           style={{
             flexShrink: 0,
             width: 170,
+            height: 34,
+            alignSelf: "center",
             position: "relative",
+            display: "flex",
+            alignItems: "center",
           }}
         >
           <form
@@ -231,6 +237,7 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
               transition: "border 0.2s, box-shadow 0.2s",
               boxSizing: "border-box",
               width: "100%",
+              margin: 0,
             }}
           >
             <svg
@@ -253,6 +260,9 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
                 border: "none",
                 color: "#f1f1f1",
                 fontSize: 11,
+                lineHeight: "34px",
+                height: "100%",
+                padding: 0,
               }}
               placeholder="Search..."
               value={query}

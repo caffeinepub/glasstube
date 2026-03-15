@@ -12,6 +12,7 @@ import {
   fetchInterestVideos,
   fetchVideoComments,
   fetchVideoDetails,
+  getApiKey,
   getYtThumbnail,
 } from "@/lib/youtube";
 import { useEffect, useRef, useState } from "react";
@@ -21,6 +22,10 @@ interface WatchPageProps {
   onWatch: (id: string, resumeTime?: number) => void;
   onChannelClick?: (channelId: string, channelTitle: string) => void;
   startTime?: number;
+  isMini?: boolean;
+  onMinimize?: () => void;
+  onExpand?: () => void;
+  onClose?: () => void;
 }
 
 const AVATAR_COLORS = [
@@ -139,6 +144,10 @@ export function WatchPage({
   onWatch,
   onChannelClick,
   startTime = 0,
+  isMini = false,
+  onMinimize,
+  onExpand: _onExpand,
+  onClose: _onClose,
 }: WatchPageProps) {
   const [video, setVideo] = useState<YouTubeVideo | null>(null);
   const [allRelated, setAllRelated] = useState<YouTubeSearchResult[]>([]);
@@ -152,21 +161,48 @@ export function WatchPage({
   const [error, setError] = useState<string | null>(null);
   const [descExpanded, setDescExpanded] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
+  const [channelSubscriberCount, setChannelSubscriberCount] = useState<
+    string | null
+  >(null);
   const [playerHovered, setPlayerHovered] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fsAnimating, setFsAnimating] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const ambientCanvasRef = useRef<HTMLCanvasElement>(null);
-  const ambientInnerCanvasRef = useRef<HTMLCanvasElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const playerCardRef = useRef<HTMLDivElement>(null);
   const playerWrapRef = useRef<HTMLDivElement>(null);
   const startTimeRef = useRef<number>(Date.now());
   const currentResumeRef = useRef<number>(startTime);
   const isPlayingRef = useRef<boolean>(false);
+  const dragStartY = useRef(0);
+  const hasScrolledRef = useRef(false);
 
   useAmbientMode(videoId, ambientCanvasRef);
-  useAmbientMode(videoId, ambientInnerCanvasRef);
+
+  // Scroll-past-video miniplayer trigger
+  useEffect(() => {
+    const onScroll = () => {
+      hasScrolledRef.current = true;
+    };
+    window.addEventListener("scroll", onScroll, { once: true, passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    const card = playerCardRef.current;
+    if (!card || !onMinimize) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting && hasScrolledRef.current) {
+          onMinimize?.();
+        }
+      },
+      { threshold: 0 },
+    );
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [onMinimize]);
 
   // Derived slices
   const related = allRelated.slice(0, relatedPage * PAGE_SIZE);
@@ -250,6 +286,28 @@ export function WatchPage({
         if (cancelled) return;
         setVideo(data);
         setLoading(false);
+
+        // Fetch real subscriber count
+        if (data?.channelId) {
+          fetch(
+            `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${data.channelId}&key=${getApiKey()}`,
+          )
+            .then((r) => r.json())
+            .then((json) => {
+              const count = json.items?.[0]?.statistics?.subscriberCount;
+              if (count && !cancelled) {
+                const n = Number.parseInt(count, 10);
+                let formatted = "";
+                if (n >= 1_000_000)
+                  formatted = `${(n / 1_000_000).toFixed(1)}M subscribers`;
+                else if (n >= 1_000)
+                  formatted = `${(n / 1_000).toFixed(0)}K subscribers`;
+                else formatted = `${n} subscribers`;
+                setChannelSubscriberCount(formatted);
+              }
+            })
+            .catch(() => {});
+        }
 
         if (data) {
           const existing = getHistory().find(
@@ -383,6 +441,47 @@ export function WatchPage({
     }
   }
 
+  // Swipe-down to minimize gesture (whole page)
+  const swipeDragX = useRef(0);
+  const swipeContainerRef = useRef<HTMLDivElement>(null);
+  const swipeAnimating = useRef(false);
+
+  const handleSwipeTouchStart = (e: React.TouchEvent) => {
+    dragStartY.current = e.touches[0].clientY;
+    swipeDragX.current = e.touches[0].clientX;
+    swipeAnimating.current = false;
+    if (swipeContainerRef.current) {
+      swipeContainerRef.current.style.transition = "none";
+    }
+  };
+
+  const handleSwipeTouchMove = (e: React.TouchEvent) => {
+    const el = swipeContainerRef.current;
+    if (!el) return;
+    const scrollTop = el.scrollTop || 0;
+    const deltaY = e.touches[0].clientY - dragStartY.current;
+    const deltaX = Math.abs(e.touches[0].clientX - swipeDragX.current);
+    // Only intercept downward swipes at top of scroll and more vertical than horizontal
+    if (deltaY > 0 && scrollTop <= 0 && deltaY > deltaX) {
+      const translateY = Math.min(deltaY * 0.4, 80);
+      el.style.transform = `translateY(${translateY}px) translateZ(0)`;
+    }
+  };
+
+  const handleSwipeTouchEnd = (e: React.TouchEvent) => {
+    const el = swipeContainerRef.current;
+    if (!el) return;
+    const deltaY = e.changedTouches[0].clientY - dragStartY.current;
+    if (deltaY > 80) {
+      onMinimize?.();
+      el.style.transition = "none";
+      el.style.transform = "translateZ(0)";
+    } else {
+      el.style.transition = "transform 0.3s cubic-bezier(0.32,0.72,0,1)";
+      el.style.transform = "translateY(0) translateZ(0)";
+    }
+  };
+
   if (error) {
     return (
       <div className="p-8 text-center" data-ocid="video.error_state">
@@ -397,13 +496,19 @@ export function WatchPage({
 
   return (
     <div
+      ref={swipeContainerRef}
       className="animate-fade-in"
-      data-ocid="player.panel"
+      onTouchStart={handleSwipeTouchStart}
+      onTouchMove={handleSwipeTouchMove}
+      onTouchEnd={handleSwipeTouchEnd}
       style={{
         display: "flex",
         flexDirection: "column",
         height: "100%",
         overflow: "visible",
+        position: "relative",
+        willChange: "transform",
+        transform: "translateZ(0)",
       }}
     >
       <div style={{ flexShrink: 0 }}>
@@ -436,6 +541,7 @@ export function WatchPage({
           style={{
             position: "relative",
             padding: "12px 12px 0",
+            paddingTop: isMini ? 0 : 12,
             transition: "padding 0.38s cubic-bezier(0.22,1,0.36,1)",
             willChange: "transform, opacity",
           }}
@@ -452,11 +558,12 @@ export function WatchPage({
               width: "120%",
               height: "calc(100% + 120px)",
               filter: "blur(80px)",
-              opacity: 0.65,
+              opacity: isMini ? 0 : 0.65,
               zIndex: 0,
               pointerEvents: "none",
               willChange: "opacity",
               transform: "translateZ(0)",
+              transition: "opacity 0.3s ease",
             }}
           />
 
@@ -474,9 +581,9 @@ export function WatchPage({
               ref={playerCardRef}
               id="player-card-inner"
               style={{
-                borderRadius: 12,
+                borderRadius: isMini ? 0 : 12,
                 overflow: "hidden",
-                border: "1px solid rgba(255,255,255,0.12)",
+                border: isMini ? "none" : "1px solid rgba(255,255,255,0.12)",
                 boxShadow: playerHovered
                   ? "0 24px 60px rgba(0,0,0,0.9), 0 8px 24px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.12)"
                   : "0 16px 40px rgba(0,0,0,0.8), 0 4px 16px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)",
@@ -492,25 +599,6 @@ export function WatchPage({
                 position: "relative",
               }}
             >
-              {/* Ambient canvas for fullscreen */}
-              <canvas
-                ref={ambientInnerCanvasRef}
-                className="ambient-inner"
-                width={640}
-                height={360}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  height: "100%",
-                  filter: "blur(60px)",
-                  opacity: isFullscreen ? 0.22 : 0,
-                  zIndex: isFullscreen ? 3 : 0,
-                  pointerEvents: "none",
-                  transition: "opacity 0.4s",
-                }}
-              />
               {/* Reflective top-edge highlight */}
               <div
                 style={{
@@ -530,68 +618,107 @@ export function WatchPage({
               <iframe
                 ref={iframeRef}
                 src={iframeSrc}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen; autoplay"
                 allowFullScreen
                 className="w-full h-full"
                 style={{ position: "relative", zIndex: 1 }}
                 title="YouTube video player"
               />
 
+              {/* Miniplayer button overlay */}
+              {!isMini && onMinimize && (
+                <button
+                  type="button"
+                  onClick={onMinimize}
+                  aria-label="Miniplayer"
+                  data-ocid="player.miniplayer.button"
+                  style={{
+                    position: "absolute",
+                    top: 8,
+                    right: 8,
+                    zIndex: 20,
+                    padding: "3px 10px",
+                    borderRadius: 20,
+                    background: "rgba(0,0,0,0.55)",
+                    backdropFilter: "blur(6px)",
+                    WebkitBackdropFilter: "blur(6px)",
+                    border: "1px solid rgba(255,255,255,0.22)",
+                    color: "#fff",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    letterSpacing: "0.03em",
+                  }}
+                >
+                  ⊟ Mini
+                </button>
+              )}
+
               {/* Fullscreen button overlay */}
-              <button
-                type="button"
-                onClick={handleFullscreen}
-                aria-label="Fullscreen"
-                data-ocid="player.fullscreen.button"
-                style={{
-                  position: "absolute",
-                  bottom: 8,
-                  right: 8,
-                  zIndex: 20,
-                  width: 28,
-                  height: 28,
-                  borderRadius: 6,
-                  background: "rgba(0,0,0,0.6)",
-                  backdropFilter: "blur(4px)",
-                  WebkitBackdropFilter: "blur(4px)",
-                  border: "1px solid rgba(255,255,255,0.2)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                  transition: "background 0.2s ease, transform 0.2s ease",
-                }}
-              >
-                {isFullscreen ? (
-                  <svg
-                    aria-hidden="true"
-                    width="14"
-                    height="14"
-                    fill="#ffffff"
-                    viewBox="0 0 24 24"
-                  >
-                    <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
-                  </svg>
-                ) : (
-                  <svg
-                    aria-hidden="true"
-                    width="14"
-                    height="14"
-                    fill="#ffffff"
-                    viewBox="0 0 24 24"
-                  >
-                    <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
-                  </svg>
-                )}
-              </button>
+              {!isMini && (
+                <button
+                  type="button"
+                  onClick={handleFullscreen}
+                  aria-label="Fullscreen"
+                  data-ocid="player.fullscreen.button"
+                  style={{
+                    position: "absolute",
+                    bottom: 8,
+                    right: 8,
+                    zIndex: 20,
+                    width: 28,
+                    height: 28,
+                    borderRadius: 6,
+                    background: "rgba(0,0,0,0.6)",
+                    backdropFilter: "blur(4px)",
+                    WebkitBackdropFilter: "blur(4px)",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    transition: "background 0.2s ease, transform 0.2s ease",
+                  }}
+                >
+                  {isFullscreen ? (
+                    <svg
+                      aria-hidden="true"
+                      width="14"
+                      height="14"
+                      fill="#ffffff"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
+                    </svg>
+                  ) : (
+                    <svg
+                      aria-hidden="true"
+                      width="14"
+                      height="14"
+                      fill="#ffffff"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+                    </svg>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>
       </div>
       {/* end fixed player section */}
 
+      {/* Scrollable content — hidden when mini */}
       <div
-        style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" }}
+        style={{
+          flex: 1,
+          overflowY: isMini ? "hidden" : "auto",
+          WebkitOverflowScrolling: "touch",
+          opacity: isMini ? 0 : 1,
+          transition: "opacity 0.25s ease",
+          pointerEvents: isMini ? "none" : "auto",
+        }}
       >
         {/* Video info */}
         <div
@@ -714,71 +841,95 @@ export function WatchPage({
                     padding: 0,
                     cursor: onChannelClick ? "pointer" : "default",
                   }}
-                  onClick={() => {
-                    if (onChannelClick && video.channelId) {
-                      onChannelClick(video.channelId, video.channelTitle);
-                    }
-                  }}
+                  onClick={() =>
+                    onChannelClick &&
+                    video &&
+                    onChannelClick(video.channelId, video.channelTitle)
+                  }
                   data-ocid="player.channel.button"
-                  aria-label={`View ${video.channelTitle}'s channel`}
                 >
-                  <div
-                    className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center text-white font-bold"
-                    style={{
-                      background: video.channelThumbnail
-                        ? "transparent"
-                        : avatarColor,
-                      border: "2px solid rgba(255,255,255,0.12)",
-                      fontSize: 16,
-                    }}
-                  >
-                    {video.channelThumbnail ? (
-                      <img
-                        src={video.channelThumbnail}
-                        alt={video.channelTitle}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      video.channelTitle.charAt(0).toUpperCase()
-                    )}
-                  </div>
-                  <div>
-                    <p
+                  {video.channelThumbnail ? (
+                    <img
+                      src={video.channelThumbnail}
+                      alt={video.channelTitle}
                       style={{
-                        color: "#f1f1f1",
-                        fontWeight: 500,
+                        width: 36,
+                        height: 36,
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        flexShrink: 0,
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: "50%",
+                        background: avatarColor,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 16,
+                        fontWeight: 700,
+                        color: "#fff",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {video.channelTitle[0]?.toUpperCase()}
+                    </div>
+                  )}
+                  <div style={{ textAlign: "left" }}>
+                    <div
+                      style={{
                         fontSize: 14,
+                        fontWeight: 600,
+                        color: "#f1f1f1",
+                        lineHeight: 1.3,
                       }}
                     >
                       {video.channelTitle}
-                    </p>
-                    <p style={{ color: "#717171", fontSize: 12 }}>
-                      1.2M subscribers
-                    </p>
+                    </div>
+                    {channelSubscriberCount && (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "#717171",
+                          marginTop: 1,
+                          textAlign: "left",
+                        }}
+                      >
+                        {channelSubscriberCount}
+                      </div>
+                    )}
                   </div>
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setSubscribed((s) => !s)}
+                  data-ocid="player.subscribe.toggle"
                   style={{
-                    padding: "8px 14px",
-                    borderRadius: 20,
-                    fontWeight: 600,
-                    fontSize: 14,
-                    cursor: "pointer",
+                    background: subscribed
+                      ? "rgba(255,255,255,0.1)"
+                      : "rgba(255,0,0,0.85)",
+                    color: "#fff",
                     border: "none",
-                    background: subscribed ? "#272727" : "#f1f1f1",
-                    color: subscribed ? "#f1f1f1" : "#000",
-                    transition: "background 0.2s ease, color 0.2s ease",
-                    willChange: "background",
+                    borderRadius: 20,
+                    padding: "7px 16px",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    transition: "background 0.2s ease",
+                    flexShrink: 0,
                   }}
-                  data-ocid="player.subscribe.button"
                 >
                   {subscribed ? "Subscribed" : "Subscribe"}
                 </button>
               </div>
 
-              {/* 4 action buttons */}
+              {/* Action buttons */}
               <div
                 className="pb-3"
                 style={{
@@ -1007,7 +1158,7 @@ export function WatchPage({
                     <CommentSkeleton key={i} />
                   ))}
                 </div>
-              ) : allComments.length === 0 ? (
+              ) : comments.length === 0 ? (
                 <p
                   style={{
                     fontSize: 13,
@@ -1016,7 +1167,7 @@ export function WatchPage({
                   }}
                   data-ocid="comments.empty_state"
                 >
-                  Comments are disabled for this video.
+                  No comments available.
                 </p>
               ) : (
                 <div style={{ padding: "0 12px" }}>
@@ -1027,40 +1178,37 @@ export function WatchPage({
                       style={{ marginBottom: 16 }}
                       data-ocid={i < 3 ? `comments.item.${i + 1}` : undefined}
                     >
-                      <div
-                        style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: "50%",
-                          overflow: "hidden",
-                          flexShrink: 0,
-                          background: getAvatarColor(c.authorName),
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 13,
-                          fontWeight: 700,
-                          color: "#fff",
-                        }}
-                      >
-                        {c.authorAvatar ? (
-                          <img
-                            src={c.authorAvatar}
-                            alt={c.authorName}
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "cover",
-                            }}
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display =
-                                "none";
-                            }}
-                          />
-                        ) : (
-                          c.authorName.charAt(0).toUpperCase()
-                        )}
-                      </div>
+                      {c.authorAvatar ? (
+                        <img
+                          src={c.authorAvatar}
+                          alt={c.authorName}
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: "50%",
+                            objectFit: "cover",
+                            flexShrink: 0,
+                          }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: "50%",
+                            background: getAvatarColor(c.authorName),
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: "#fff",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {c.authorName[0]?.toUpperCase()}
+                        </div>
+                      )}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div
                           className="flex items-center gap-2"
@@ -1079,7 +1227,7 @@ export function WatchPage({
                             {timeAgo(c.publishedAt)}
                           </span>
                         </div>
-                        <p
+                        <div
                           style={{
                             fontSize: 13,
                             color: "#d0d0d0",
@@ -1201,6 +1349,7 @@ export function WatchPage({
                       borderRadius: 8,
                       overflow: "hidden",
                       background: "#111",
+                      position: "relative",
                     }}
                   >
                     <img
@@ -1214,6 +1363,26 @@ export function WatchPage({
                         if (img.src !== fb) img.src = fb;
                       }}
                     />
+                    {/* Duration badge on thumbnail */}
+                    {v.duration && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          bottom: 4,
+                          right: 4,
+                          background: "rgba(0,0,0,0.82)",
+                          color: "#fff",
+                          fontSize: 10,
+                          fontWeight: 700,
+                          borderRadius: 3,
+                          padding: "1px 4px",
+                          lineHeight: 1.4,
+                          letterSpacing: "0.02em",
+                        }}
+                      >
+                        {v.duration}
+                      </div>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0 py-1">
                     <p
