@@ -280,11 +280,23 @@ export default function App() {
       )}
 
       <main
-        style={{
-          paddingTop: "calc(64px + env(safe-area-inset-top, 0px))",
-          paddingBottom: "calc(60px + env(safe-area-inset-bottom, 0px))",
-          minHeight: "100vh",
-        }}
+        style={
+          currentPage === "watch"
+            ? {
+                paddingTop: "calc(64px + env(safe-area-inset-top, 0px))",
+                paddingBottom: 0,
+                height:
+                  "calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))",
+                overflow: "hidden",
+                display: "flex",
+                flexDirection: "column",
+              }
+            : {
+                paddingTop: "calc(64px + env(safe-area-inset-top, 0px))",
+                paddingBottom: "calc(60px + env(safe-area-inset-bottom, 0px))",
+                minHeight: "100vh",
+              }
+        }
       >
         {renderPage()}
       </main>

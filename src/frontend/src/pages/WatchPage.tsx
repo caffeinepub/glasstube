@@ -157,6 +157,7 @@ export function WatchPage({
   const [fsAnimating, setFsAnimating] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const ambientCanvasRef = useRef<HTMLCanvasElement>(null);
+  const ambientInnerCanvasRef = useRef<HTMLCanvasElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const playerCardRef = useRef<HTMLDivElement>(null);
   const playerWrapRef = useRef<HTMLDivElement>(null);
@@ -165,6 +166,7 @@ export function WatchPage({
   const isPlayingRef = useRef<boolean>(false);
 
   useAmbientMode(videoId, ambientCanvasRef);
+  useAmbientMode(videoId, ambientInnerCanvasRef);
 
   // Derived slices
   const related = allRelated.slice(0, relatedPage * PAGE_SIZE);
@@ -394,9 +396,19 @@ export function WatchPage({
   const iframeSrc = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1&enablejsapi=1${startTime > 0 ? `&start=${startTime}` : ""}`;
 
   return (
-    <div className="animate-fade-in" data-ocid="player.panel" style={{}}>
-      {/* Fullscreen transition overlay */}
-      <style>{`
+    <div
+      className="animate-fade-in"
+      data-ocid="player.panel"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        overflow: "visible",
+      }}
+    >
+      <div style={{ flexShrink: 0 }}>
+        {/* Fullscreen transition overlay */}
+        <style>{`
         @keyframes fs-enter {
           from { opacity: 0; transform: scale(0.96); }
           to   { opacity: 1; transform: scale(1); }
@@ -407,673 +419,835 @@ export function WatchPage({
         }
         .fs-animating-enter { animation: fs-enter 0.38s cubic-bezier(0.22,1,0.36,1) forwards; }
         .fs-animating-exit  { animation: fs-exit  0.38s cubic-bezier(0.22,1,0.36,1) forwards; }
-        #player-card-inner:-webkit-full-screen { background: #000; }
-        #player-card-inner:fullscreen { background: #000; }
+        #player-card-inner:-webkit-full-screen { background: transparent; }
+        #player-card-inner:fullscreen { background: transparent; }
       `}</style>
 
-      {/* Outer ambient + player wrapper */}
-      <div
-        ref={playerWrapRef}
-        className={
-          fsAnimating
-            ? isFullscreen
-              ? "fs-animating-enter"
-              : "fs-animating-exit"
-            : ""
-        }
-        style={{
-          position: "relative",
-          padding: "12px 12px 0",
-          transition: "padding 0.38s cubic-bezier(0.22,1,0.36,1)",
-          willChange: "transform, opacity",
-        }}
-      >
-        {/* Ambient canvas */}
-        <canvas
-          ref={ambientCanvasRef}
-          width={640}
-          height={360}
-          style={{
-            position: "absolute",
-            top: -60,
-            left: "-10%",
-            width: "120%",
-            height: "calc(100% + 120px)",
-            filter: "blur(80px)",
-            opacity: 0.65,
-            zIndex: 0,
-            pointerEvents: "none",
-            willChange: "opacity",
-            transform: "translateZ(0)",
-          }}
-        />
-
-        {/* 3D card player */}
+        {/* Outer ambient + player wrapper */}
         <div
-          onMouseEnter={() => setPlayerHovered(true)}
-          onMouseLeave={() => setPlayerHovered(false)}
+          ref={playerWrapRef}
+          className={
+            fsAnimating
+              ? isFullscreen
+                ? "fs-animating-enter"
+                : "fs-animating-exit"
+              : ""
+          }
           style={{
             position: "relative",
-            zIndex: 1,
-            perspective: "1000px",
+            padding: "12px 12px 0",
+            transition: "padding 0.38s cubic-bezier(0.22,1,0.36,1)",
+            willChange: "transform, opacity",
           }}
         >
-          <div
-            ref={playerCardRef}
-            id="player-card-inner"
+          {/* Ambient canvas */}
+          <canvas
+            ref={ambientCanvasRef}
+            width={640}
+            height={360}
             style={{
-              borderRadius: 12,
-              overflow: "hidden",
-              border: "1px solid rgba(255,255,255,0.12)",
-              boxShadow: playerHovered
-                ? "0 24px 60px rgba(0,0,0,0.9), 0 8px 24px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.12)"
-                : "0 16px 40px rgba(0,0,0,0.8), 0 4px 16px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)",
-              transform: playerHovered
-                ? "rotateX(2deg) translateY(-2px) scale(1.005)"
-                : "rotateX(0deg) translateY(0) scale(1)",
-              transformStyle: "preserve-3d",
-              transition:
-                "transform 0.35s cubic-bezier(0.25,0.46,0.45,0.94), box-shadow 0.35s cubic-bezier(0.25,0.46,0.45,0.94)",
-              willChange: "transform, box-shadow",
-              aspectRatio: "16/9",
-              background: "#000",
+              position: "absolute",
+              top: -60,
+              left: "-10%",
+              width: "120%",
+              height: "calc(100% + 120px)",
+              filter: "blur(80px)",
+              opacity: 0.65,
+              zIndex: 0,
+              pointerEvents: "none",
+              willChange: "opacity",
+              transform: "translateZ(0)",
+            }}
+          />
+
+          {/* 3D card player */}
+          <div
+            onMouseEnter={() => setPlayerHovered(true)}
+            onMouseLeave={() => setPlayerHovered(false)}
+            style={{
               position: "relative",
+              zIndex: 1,
+              perspective: "1000px",
             }}
           >
-            {/* Reflective top-edge highlight */}
             <div
+              ref={playerCardRef}
+              id="player-card-inner"
               style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                height: 2,
-                background:
-                  "linear-gradient(90deg, transparent, rgba(255,255,255,0.25), rgba(255,255,255,0.08), transparent)",
-                zIndex: 10,
-                pointerEvents: "none",
-              }}
-            />
-
-            {/* iframe */}
-            <iframe
-              ref={iframeRef}
-              src={iframeSrc}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-              allowFullScreen
-              className="w-full h-full"
-              style={{ position: "relative", zIndex: 1 }}
-              title="YouTube video player"
-            />
-
-            {/* Fullscreen button overlay */}
-            <button
-              type="button"
-              onClick={handleFullscreen}
-              aria-label="Fullscreen"
-              data-ocid="player.fullscreen.button"
-              style={{
-                position: "absolute",
-                bottom: 8,
-                right: 8,
-                zIndex: 20,
-                width: 28,
-                height: 28,
-                borderRadius: 6,
-                background: "rgba(0,0,0,0.6)",
-                backdropFilter: "blur(4px)",
-                WebkitBackdropFilter: "blur(4px)",
-                border: "1px solid rgba(255,255,255,0.2)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                transition: "background 0.2s ease, transform 0.2s ease",
+                borderRadius: 12,
+                overflow: "hidden",
+                border: "1px solid rgba(255,255,255,0.12)",
+                boxShadow: playerHovered
+                  ? "0 24px 60px rgba(0,0,0,0.9), 0 8px 24px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.12)"
+                  : "0 16px 40px rgba(0,0,0,0.8), 0 4px 16px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)",
+                transform: playerHovered
+                  ? "rotateX(2deg) translateY(-2px) scale(1.005)"
+                  : "rotateX(0deg) translateY(0) scale(1)",
+                transformStyle: "preserve-3d",
+                transition:
+                  "transform 0.35s cubic-bezier(0.25,0.46,0.45,0.94), box-shadow 0.35s cubic-bezier(0.25,0.46,0.45,0.94)",
+                willChange: "transform, box-shadow",
+                aspectRatio: "16/9",
+                background: "#000",
+                position: "relative",
               }}
             >
-              {isFullscreen ? (
-                <svg
-                  aria-hidden="true"
-                  width="14"
-                  height="14"
-                  fill="#ffffff"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
-                </svg>
-              ) : (
-                <svg
-                  aria-hidden="true"
-                  width="14"
-                  height="14"
-                  fill="#ffffff"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
-                </svg>
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Video info */}
-      <div
-        className="px-3 pt-0"
-        style={{ position: "relative", zIndex: 1, marginTop: -4 }}
-      >
-        {loading ? (
-          <div className="space-y-3" data-ocid="video.loading_state">
-            <div
-              className="yt-skeleton h-6 w-4/5"
-              style={{ borderRadius: 4 }}
-            />
-            <div
-              className="yt-skeleton h-4 w-1/2"
-              style={{ borderRadius: 4 }}
-            />
-          </div>
-        ) : video ? (
-          <>
-            {/* Clickable title toggles description */}
-            <button
-              type="button"
-              className="w-full text-left flex items-start gap-2"
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: 0,
-                marginBottom: 4,
-                marginTop: 20,
-              }}
-              onClick={() => setDescExpanded((d) => !d)}
-              data-ocid="player.description.toggle"
-            >
-              <h1
+              {/* Ambient canvas for fullscreen */}
+              <canvas
+                ref={ambientInnerCanvasRef}
+                className="ambient-inner"
+                width={640}
+                height={360}
                 style={{
-                  fontSize: 17,
-                  fontWeight: 600,
-                  color: "#f1f1f1",
-                  lineHeight: "24px",
-                  flex: 1,
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  height: "100%",
+                  filter: "blur(60px)",
+                  opacity: isFullscreen ? 0.22 : 0,
+                  zIndex: isFullscreen ? 3 : 0,
+                  pointerEvents: "none",
+                  transition: "opacity 0.4s",
                 }}
-              >
-                {video.title}
-              </h1>
-              <svg
-                aria-hidden="true"
-                width="18"
-                height="18"
-                fill="#888"
-                viewBox="0 0 24 24"
-                style={{
-                  flexShrink: 0,
-                  marginTop: 3,
-                  transition:
-                    "transform 0.3s cubic-bezier(0.25,0.46,0.45,0.94)",
-                  transform: descExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                  willChange: "transform",
-                }}
-              >
-                <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" />
-              </svg>
-            </button>
-
-            {/* Description */}
-            {descExpanded && (
+              />
+              {/* Reflective top-edge highlight */}
               <div
-                className="mb-4 animate-fade-in"
                 style={{
-                  background: "#0d0d0d",
-                  borderRadius: 12,
-                  padding: "12px",
-                  border: "1px solid rgba(255,255,255,0.06)",
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 2,
+                  background:
+                    "linear-gradient(90deg, transparent, rgba(255,255,255,0.25), rgba(255,255,255,0.08), transparent)",
+                  zIndex: 10,
+                  pointerEvents: "none",
                 }}
-                data-ocid="player.description.panel"
-              >
-                <p style={{ fontSize: 13, color: "#717171", marginBottom: 8 }}>
-                  {formatViews(video.viewCount)} views &bull;{" "}
-                  {timeAgo(video.publishedAt)}
-                </p>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "#f1f1f1",
-                    lineHeight: "20px",
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  {video.description || "No description available."}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setDescExpanded(false)}
-                  style={{
-                    marginTop: 8,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "#f1f1f1",
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: 0,
-                  }}
-                >
-                  Show less
-                </button>
-              </div>
-            )}
+              />
 
-            {/* Channel row */}
-            <div className="flex items-center justify-between mb-3">
+              {/* iframe */}
+              <iframe
+                ref={iframeRef}
+                src={iframeSrc}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                allowFullScreen
+                className="w-full h-full"
+                style={{ position: "relative", zIndex: 1 }}
+                title="YouTube video player"
+              />
+
+              {/* Fullscreen button overlay */}
               <button
                 type="button"
-                className="flex items-center gap-3"
+                onClick={handleFullscreen}
+                aria-label="Fullscreen"
+                data-ocid="player.fullscreen.button"
                 style={{
-                  background: "none",
-                  border: "none",
-                  padding: 0,
-                  cursor: onChannelClick ? "pointer" : "default",
-                }}
-                onClick={() => {
-                  if (onChannelClick && video.channelId) {
-                    onChannelClick(video.channelId, video.channelTitle);
-                  }
-                }}
-                data-ocid="player.channel.button"
-                aria-label={`View ${video.channelTitle}'s channel`}
-              >
-                <div
-                  className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center text-white font-bold"
-                  style={{
-                    background: video.channelThumbnail
-                      ? "transparent"
-                      : avatarColor,
-                    border: "2px solid rgba(255,255,255,0.12)",
-                    fontSize: 16,
-                  }}
-                >
-                  {video.channelThumbnail ? (
-                    <img
-                      src={video.channelThumbnail}
-                      alt={video.channelTitle}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    video.channelTitle.charAt(0).toUpperCase()
-                  )}
-                </div>
-                <div>
-                  <p
-                    style={{ color: "#f1f1f1", fontWeight: 500, fontSize: 14 }}
-                  >
-                    {video.channelTitle}
-                  </p>
-                  <p style={{ color: "#717171", fontSize: 12 }}>
-                    1.2M subscribers
-                  </p>
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSubscribed((s) => !s)}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 20,
-                  fontWeight: 600,
-                  fontSize: 14,
+                  position: "absolute",
+                  bottom: 8,
+                  right: 8,
+                  zIndex: 20,
+                  width: 28,
+                  height: 28,
+                  borderRadius: 6,
+                  background: "rgba(0,0,0,0.6)",
+                  backdropFilter: "blur(4px)",
+                  WebkitBackdropFilter: "blur(4px)",
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                   cursor: "pointer",
-                  border: "none",
-                  background: subscribed ? "#272727" : "#f1f1f1",
-                  color: subscribed ? "#f1f1f1" : "#000",
-                  transition: "background 0.2s ease, color 0.2s ease",
-                  willChange: "background",
-                }}
-                data-ocid="player.subscribe.button"
-              >
-                {subscribed ? "Subscribed" : "Subscribe"}
-              </button>
-            </div>
-
-            {/* 4 action buttons */}
-            <div
-              className="pb-3"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                width: "100%",
-              }}
-            >
-              {/* Likes */}
-              <div
-                className="flex items-center gap-1"
-                style={{
-                  flex: 1,
-                  justifyContent: "center",
-                  padding: "7px 4px",
-                  background: "#1a1a1a",
-                  borderRadius: 20,
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  color: "#f1f1f1",
-                  whiteSpace: "nowrap",
-                  minWidth: 0,
+                  transition: "background 0.2s ease, transform 0.2s ease",
                 }}
               >
-                <svg
-                  aria-hidden="true"
-                  width="13"
-                  height="13"
-                  fill="#f1f1f1"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z" />
-                </svg>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {formatLikes(video.likeCount)}
-                </span>
-              </div>
-
-              {/* Duration */}
-              <div
-                className="flex items-center gap-1"
-                style={{
-                  flex: 1,
-                  justifyContent: "center",
-                  padding: "7px 4px",
-                  background: "#1a1a1a",
-                  borderRadius: 20,
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  color: "#f1f1f1",
-                  whiteSpace: "nowrap",
-                  minWidth: 0,
-                }}
-              >
-                <svg
-                  aria-hidden="true"
-                  width="13"
-                  height="13"
-                  fill="#f1f1f1"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z" />
-                </svg>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {video.duration || "--:--"}
-                </span>
-              </div>
-
-              {/* Date */}
-              <div
-                className="flex items-center gap-1"
-                style={{
-                  flex: 1,
-                  justifyContent: "center",
-                  padding: "7px 4px",
-                  background: "#1a1a1a",
-                  borderRadius: 20,
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  color: "#f1f1f1",
-                  whiteSpace: "nowrap",
-                  minWidth: 0,
-                }}
-              >
-                <span
-                  style={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    fontSize: 11,
-                  }}
-                >
-                  {formatDate(video.publishedAt)}
-                </span>
-              </div>
-
-              {/* Copy Link */}
-              <button
-                type="button"
-                onClick={handleCopyLink}
-                className="flex items-center gap-1"
-                style={{
-                  flex: 1,
-                  justifyContent: "center",
-                  padding: "7px 4px",
-                  background: copySuccess ? "#1a3a1a" : "#1a1a1a",
-                  borderRadius: 20,
-                  border: `1px solid ${copySuccess ? "rgba(0,200,0,0.3)" : "rgba(255,255,255,0.08)"}`,
-                  fontSize: 11,
-                  fontWeight: 500,
-                  color: copySuccess ? "#4caf50" : "#f1f1f1",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  minWidth: 0,
-                  transition:
-                    "background 0.2s ease, color 0.2s ease, border-color 0.2s ease",
-                }}
-                data-ocid="player.secondary_button"
-                aria-label="Copy video link"
-              >
-                {copySuccess ? (
+                {isFullscreen ? (
                   <svg
                     aria-hidden="true"
-                    width="12"
-                    height="12"
-                    fill="#4caf50"
+                    width="14"
+                    height="14"
+                    fill="#ffffff"
                     viewBox="0 0 24 24"
                   >
-                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                    <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
                   </svg>
                 ) : (
                   <svg
                     aria-hidden="true"
-                    width="12"
-                    height="12"
+                    width="14"
+                    height="14"
+                    fill="#ffffff"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* end fixed player section */}
+
+      <div
+        style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" }}
+      >
+        {/* Video info */}
+        <div
+          className="px-3 pt-0"
+          style={{ position: "relative", zIndex: 1, marginTop: -4 }}
+        >
+          {loading ? (
+            <div className="space-y-3" data-ocid="video.loading_state">
+              <div
+                className="yt-skeleton h-6 w-4/5"
+                style={{ borderRadius: 4 }}
+              />
+              <div
+                className="yt-skeleton h-4 w-1/2"
+                style={{ borderRadius: 4 }}
+              />
+            </div>
+          ) : video ? (
+            <>
+              {/* Clickable title toggles description */}
+              <button
+                type="button"
+                className="w-full text-left flex items-start gap-2"
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 0,
+                  marginBottom: 4,
+                  marginTop: 20,
+                }}
+                onClick={() => setDescExpanded((d) => !d)}
+                data-ocid="player.description.toggle"
+              >
+                <h1
+                  style={{
+                    fontSize: 17,
+                    fontWeight: 600,
+                    color: "#f1f1f1",
+                    lineHeight: "24px",
+                    flex: 1,
+                  }}
+                >
+                  {video.title}
+                </h1>
+                <svg
+                  aria-hidden="true"
+                  width="18"
+                  height="18"
+                  fill="#888"
+                  viewBox="0 0 24 24"
+                  style={{
+                    flexShrink: 0,
+                    marginTop: 3,
+                    transition:
+                      "transform 0.3s cubic-bezier(0.25,0.46,0.45,0.94)",
+                    transform: descExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                    willChange: "transform",
+                  }}
+                >
+                  <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" />
+                </svg>
+              </button>
+
+              {/* Description */}
+              {descExpanded && (
+                <div
+                  className="mb-4 animate-fade-in"
+                  style={{
+                    background: "#0d0d0d",
+                    borderRadius: 12,
+                    padding: "12px",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                  }}
+                  data-ocid="player.description.panel"
+                >
+                  <p
+                    style={{ fontSize: 13, color: "#717171", marginBottom: 8 }}
+                  >
+                    {formatViews(video.viewCount)} views &bull;{" "}
+                    {timeAgo(video.publishedAt)}
+                  </p>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "#f1f1f1",
+                      lineHeight: "20px",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {video.description || "No description available."}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDescExpanded(false)}
+                    style={{
+                      marginTop: 8,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: "#f1f1f1",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                  >
+                    Show less
+                  </button>
+                </div>
+              )}
+
+              {/* Channel row */}
+              <div className="flex items-center justify-between mb-3">
+                <button
+                  type="button"
+                  className="flex items-center gap-3"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    cursor: onChannelClick ? "pointer" : "default",
+                  }}
+                  onClick={() => {
+                    if (onChannelClick && video.channelId) {
+                      onChannelClick(video.channelId, video.channelTitle);
+                    }
+                  }}
+                  data-ocid="player.channel.button"
+                  aria-label={`View ${video.channelTitle}'s channel`}
+                >
+                  <div
+                    className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 flex items-center justify-center text-white font-bold"
+                    style={{
+                      background: video.channelThumbnail
+                        ? "transparent"
+                        : avatarColor,
+                      border: "2px solid rgba(255,255,255,0.12)",
+                      fontSize: 16,
+                    }}
+                  >
+                    {video.channelThumbnail ? (
+                      <img
+                        src={video.channelThumbnail}
+                        alt={video.channelTitle}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      video.channelTitle.charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <div>
+                    <p
+                      style={{
+                        color: "#f1f1f1",
+                        fontWeight: 500,
+                        fontSize: 14,
+                      }}
+                    >
+                      {video.channelTitle}
+                    </p>
+                    <p style={{ color: "#717171", fontSize: 12 }}>
+                      1.2M subscribers
+                    </p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSubscribed((s) => !s)}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 20,
+                    fontWeight: 600,
+                    fontSize: 14,
+                    cursor: "pointer",
+                    border: "none",
+                    background: subscribed ? "#272727" : "#f1f1f1",
+                    color: subscribed ? "#f1f1f1" : "#000",
+                    transition: "background 0.2s ease, color 0.2s ease",
+                    willChange: "background",
+                  }}
+                  data-ocid="player.subscribe.button"
+                >
+                  {subscribed ? "Subscribed" : "Subscribe"}
+                </button>
+              </div>
+
+              {/* 4 action buttons */}
+              <div
+                className="pb-3"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  width: "100%",
+                }}
+              >
+                {/* Likes */}
+                <div
+                  className="flex items-center gap-1"
+                  style={{
+                    flex: 1,
+                    justifyContent: "center",
+                    padding: "7px 4px",
+                    background: "#1a1a1a",
+                    borderRadius: 20,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: "#f1f1f1",
+                    whiteSpace: "nowrap",
+                    minWidth: 0,
+                  }}
+                >
+                  <svg
+                    aria-hidden="true"
+                    width="13"
+                    height="13"
                     fill="#f1f1f1"
                     viewBox="0 0 24 24"
                   >
-                    <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+                    <path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z" />
                   </svg>
-                )}
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {copySuccess ? "Copied!" : "Copy Link"}
-                </span>
-              </button>
-            </div>
-          </>
-        ) : null}
-      </div>
+                  <span
+                    style={{ overflow: "hidden", textOverflow: "ellipsis" }}
+                  >
+                    {formatLikes(video.likeCount)}
+                  </span>
+                </div>
 
-      {/* Divider */}
-      <div
-        style={{
-          height: 1,
-          background: "rgba(255,255,255,0.06)",
-          margin: "0 12px",
-        }}
-      />
+                {/* Duration */}
+                <div
+                  className="flex items-center gap-1"
+                  style={{
+                    flex: 1,
+                    justifyContent: "center",
+                    padding: "7px 4px",
+                    background: "#1a1a1a",
+                    borderRadius: 20,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: "#f1f1f1",
+                    whiteSpace: "nowrap",
+                    minWidth: 0,
+                  }}
+                >
+                  <svg
+                    aria-hidden="true"
+                    width="13"
+                    height="13"
+                    fill="#f1f1f1"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z" />
+                  </svg>
+                  <span
+                    style={{ overflow: "hidden", textOverflow: "ellipsis" }}
+                  >
+                    {video.duration || "--:--"}
+                  </span>
+                </div>
 
-      {/* Comments section (collapsible) */}
-      <div data-ocid="comments.panel">
-        <button
-          type="button"
-          className="w-full flex items-center justify-between"
+                {/* Date */}
+                <div
+                  className="flex items-center gap-1"
+                  style={{
+                    flex: 1,
+                    justifyContent: "center",
+                    padding: "7px 4px",
+                    background: "#1a1a1a",
+                    borderRadius: 20,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: "#f1f1f1",
+                    whiteSpace: "nowrap",
+                    minWidth: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      fontSize: 11,
+                    }}
+                  >
+                    {formatDate(video.publishedAt)}
+                  </span>
+                </div>
+
+                {/* Copy Link */}
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="flex items-center gap-1"
+                  style={{
+                    flex: 1,
+                    justifyContent: "center",
+                    padding: "7px 4px",
+                    background: copySuccess ? "#1a3a1a" : "#1a1a1a",
+                    borderRadius: 20,
+                    border: `1px solid ${copySuccess ? "rgba(0,200,0,0.3)" : "rgba(255,255,255,0.08)"}`,
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: copySuccess ? "#4caf50" : "#f1f1f1",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    minWidth: 0,
+                    transition:
+                      "background 0.2s ease, color 0.2s ease, border-color 0.2s ease",
+                  }}
+                  data-ocid="player.secondary_button"
+                  aria-label="Copy video link"
+                >
+                  {copySuccess ? (
+                    <svg
+                      aria-hidden="true"
+                      width="12"
+                      height="12"
+                      fill="#4caf50"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                    </svg>
+                  ) : (
+                    <svg
+                      aria-hidden="true"
+                      width="12"
+                      height="12"
+                      fill="#f1f1f1"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+                    </svg>
+                  )}
+                  <span
+                    style={{ overflow: "hidden", textOverflow: "ellipsis" }}
+                  >
+                    {copySuccess ? "Copied!" : "Copy Link"}
+                  </span>
+                </button>
+              </div>
+            </>
+          ) : null}
+        </div>
+
+        {/* Divider */}
+        <div
           style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            padding: "10px 12px 8px",
+            height: 1,
+            background: "rgba(255,255,255,0.06)",
+            margin: "0 12px",
           }}
-          onClick={handleToggleComments}
-          data-ocid="comments.toggle"
-        >
-          <div className="flex items-center gap-2">
+        />
+
+        {/* Comments section (collapsible) */}
+        <div data-ocid="comments.panel">
+          <button
+            type="button"
+            className="w-full flex items-center justify-between"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "10px 12px 8px",
+            }}
+            onClick={handleToggleComments}
+            data-ocid="comments.toggle"
+          >
+            <div className="flex items-center gap-2">
+              <svg
+                aria-hidden="true"
+                width="18"
+                height="18"
+                fill="#f1f1f1"
+                viewBox="0 0 24 24"
+              >
+                <path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18z" />
+              </svg>
+              <span style={{ fontSize: 15, fontWeight: 600, color: "#f1f1f1" }}>
+                Comments
+              </span>
+            </div>
             <svg
               aria-hidden="true"
               width="18"
               height="18"
-              fill="#f1f1f1"
+              fill="#888"
               viewBox="0 0 24 24"
+              style={{
+                transition: "transform 0.3s cubic-bezier(0.25,0.46,0.45,0.94)",
+                transform: commentsOpen ? "rotate(180deg)" : "rotate(0deg)",
+                willChange: "transform",
+              }}
             >
-              <path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18z" />
+              <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" />
             </svg>
-            <span style={{ fontSize: 15, fontWeight: 600, color: "#f1f1f1" }}>
-              Comments
-            </span>
-          </div>
-          <svg
-            aria-hidden="true"
-            width="18"
-            height="18"
-            fill="#888"
-            viewBox="0 0 24 24"
-            style={{
-              transition: "transform 0.3s cubic-bezier(0.25,0.46,0.45,0.94)",
-              transform: commentsOpen ? "rotate(180deg)" : "rotate(0deg)",
-              willChange: "transform",
-            }}
-          >
-            <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" />
-          </svg>
-        </button>
+          </button>
 
-        {commentsOpen && (
-          <div
-            className="animate-fade-in"
-            style={{ paddingBottom: 8 }}
-            data-ocid="comments.list"
-          >
-            {commentsLoading ? (
-              <div
-                style={{ padding: "8px 12px" }}
-                data-ocid="comments.loading_state"
-              >
-                {Array.from({ length: 4 }).map((_, i) => (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: skeleton
-                  <CommentSkeleton key={i} />
-                ))}
-              </div>
-            ) : allComments.length === 0 ? (
-              <p
-                style={{
-                  fontSize: 13,
-                  color: "#717171",
-                  padding: "8px 12px 16px",
-                }}
-                data-ocid="comments.empty_state"
-              >
-                Comments are disabled for this video.
-              </p>
-            ) : (
-              <div style={{ padding: "0 12px" }}>
-                {comments.map((c, i) => (
-                  <div
-                    key={c.id}
-                    className="flex gap-3"
-                    style={{ marginBottom: 16 }}
-                    data-ocid={i < 3 ? `comments.item.${i + 1}` : undefined}
-                  >
+          {commentsOpen && (
+            <div
+              className="animate-fade-in"
+              style={{ paddingBottom: 8 }}
+              data-ocid="comments.list"
+            >
+              {commentsLoading ? (
+                <div
+                  style={{ padding: "8px 12px" }}
+                  data-ocid="comments.loading_state"
+                >
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: skeleton
+                    <CommentSkeleton key={i} />
+                  ))}
+                </div>
+              ) : allComments.length === 0 ? (
+                <p
+                  style={{
+                    fontSize: 13,
+                    color: "#717171",
+                    padding: "8px 12px 16px",
+                  }}
+                  data-ocid="comments.empty_state"
+                >
+                  Comments are disabled for this video.
+                </p>
+              ) : (
+                <div style={{ padding: "0 12px" }}>
+                  {comments.map((c, i) => (
                     <div
-                      style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: "50%",
-                        overflow: "hidden",
-                        flexShrink: 0,
-                        background: getAvatarColor(c.authorName),
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 13,
-                        fontWeight: 700,
-                        color: "#fff",
-                      }}
+                      key={c.id}
+                      className="flex gap-3"
+                      style={{ marginBottom: 16 }}
+                      data-ocid={i < 3 ? `comments.item.${i + 1}` : undefined}
                     >
-                      {c.authorAvatar ? (
-                        <img
-                          src={c.authorAvatar}
-                          alt={c.authorName}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
-                          }}
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display =
-                              "none";
-                          }}
-                        />
-                      ) : (
-                        c.authorName.charAt(0).toUpperCase()
-                      )}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
                       <div
-                        className="flex items-center gap-2"
-                        style={{ marginBottom: 3 }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 600,
-                            color: "#f1f1f1",
-                          }}
-                        >
-                          {c.authorName}
-                        </span>
-                        <span style={{ fontSize: 11, color: "#717171" }}>
-                          {timeAgo(c.publishedAt)}
-                        </span>
-                      </div>
-                      <p
                         style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: "50%",
+                          overflow: "hidden",
+                          flexShrink: 0,
+                          background: getAvatarColor(c.authorName),
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
                           fontSize: 13,
-                          color: "#d0d0d0",
-                          lineHeight: "18px",
-                          wordBreak: "break-word",
+                          fontWeight: 700,
+                          color: "#fff",
                         }}
-                        // biome-ignore lint/security/noDangerouslySetInnerHtml: YouTube comment HTML
-                        dangerouslySetInnerHTML={{ __html: c.text }}
-                      />
-                      {c.likeCount > 0 && (
+                      >
+                        {c.authorAvatar ? (
+                          <img
+                            src={c.authorAvatar}
+                            alt={c.authorName}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                            }}
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display =
+                                "none";
+                            }}
+                          />
+                        ) : (
+                          c.authorName.charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div
-                          className="flex items-center gap-1"
-                          style={{ marginTop: 5 }}
+                          className="flex items-center gap-2"
+                          style={{ marginBottom: 3 }}
                         >
-                          <svg
-                            aria-hidden="true"
-                            width="12"
-                            height="12"
-                            fill="#717171"
-                            viewBox="0 0 24 24"
+                          <span
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 600,
+                              color: "#f1f1f1",
+                            }}
                           >
-                            <path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z" />
-                          </svg>
+                            {c.authorName}
+                          </span>
                           <span style={{ fontSize: 11, color: "#717171" }}>
-                            {c.likeCount.toLocaleString()}
+                            {timeAgo(c.publishedAt)}
                           </span>
                         </div>
-                      )}
+                        <p
+                          style={{
+                            fontSize: 13,
+                            color: "#d0d0d0",
+                            lineHeight: "18px",
+                            wordBreak: "break-word",
+                          }}
+                          // biome-ignore lint/security/noDangerouslySetInnerHtml: YouTube comment HTML
+                          dangerouslySetInnerHTML={{ __html: c.text }}
+                        />
+                        {c.likeCount > 0 && (
+                          <div
+                            className="flex items-center gap-1"
+                            style={{ marginTop: 5 }}
+                          >
+                            <svg
+                              aria-hidden="true"
+                              width="12"
+                              height="12"
+                              fill="#717171"
+                              viewBox="0 0 24 24"
+                            >
+                              <path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z" />
+                            </svg>
+                            <span style={{ fontSize: 11, color: "#717171" }}>
+                              {c.likeCount.toLocaleString()}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
 
-                {/* Load more comments */}
-                {hasMoreComments && (
+                  {/* Load more comments */}
+                  {hasMoreComments && (
+                    <button
+                      type="button"
+                      onClick={() => setCommentsPage((p) => p + 1)}
+                      data-ocid="comments.pagination_next"
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        marginBottom: 12,
+                        background: "#1a1a1a",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: 10,
+                        color: "#f1f1f1",
+                        fontSize: 13,
+                        fontWeight: 500,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Load more comments
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Divider before recommended */}
+        <div
+          style={{
+            height: 1,
+            background: "rgba(255,255,255,0.06)",
+            margin: "0 12px",
+          }}
+        />
+
+        {/* Recommended videos */}
+        <div className="pt-2">
+          <h2
+            style={{
+              fontSize: 15,
+              fontWeight: 600,
+              color: "#f1f1f1",
+              padding: "8px 12px 4px",
+            }}
+          >
+            Recommended
+          </h2>
+          {relatedLoading ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders
+              <RelatedSkeleton key={i} />
+            ))
+          ) : related.length === 0 ? (
+            <p
+              style={{
+                fontSize: 13,
+                color: "#717171",
+                padding: "8px 12px 16px",
+              }}
+              data-ocid="related.empty_state"
+            >
+              No recommendations available.
+            </p>
+          ) : (
+            <>
+              {related.map((v, i) => (
+                <button
+                  type="button"
+                  key={v.id}
+                  className="flex gap-2 w-full text-left px-3 py-2"
+                  style={{
+                    cursor: "pointer",
+                    background: "transparent",
+                    border: "none",
+                    transition: "background 0.15s ease",
+                  }}
+                  onClick={() => onWatch(v.id)}
+                  data-ocid={i < 3 ? `related.item.${i + 1}` : undefined}
+                >
+                  <div
+                    style={{
+                      width: 160,
+                      height: 90,
+                      flexShrink: 0,
+                      borderRadius: 8,
+                      overflow: "hidden",
+                      background: "#111",
+                    }}
+                  >
+                    <img
+                      src={v.thumbnail || getYtThumbnail(v.id)}
+                      alt={v.title}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      onError={(e) => {
+                        const img = e.target as HTMLImageElement;
+                        const fb = getYtThumbnail(v.id);
+                        if (img.src !== fb) img.src = fb;
+                      }}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0 py-1">
+                    <p
+                      className="line-clamp-2"
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 500,
+                        color: "#f1f1f1",
+                        lineHeight: "18px",
+                        marginBottom: 3,
+                      }}
+                    >
+                      {v.title}
+                    </p>
+                    <p style={{ fontSize: 12, color: "#717171" }}>
+                      {v.channelTitle}
+                    </p>
+                    <p style={{ fontSize: 12, color: "#717171" }}>
+                      {timeAgo(v.publishedAt)}
+                    </p>
+                  </div>
+                </button>
+              ))}
+
+              {/* Load more recommended */}
+              {hasMoreRelated && (
+                <div style={{ padding: "4px 12px 12px" }}>
                   <button
                     type="button"
-                    onClick={() => setCommentsPage((p) => p + 1)}
-                    data-ocid="comments.pagination_next"
+                    onClick={() => setRelatedPage((p) => p + 1)}
+                    data-ocid="related.pagination_next"
                     style={{
                       width: "100%",
                       padding: "10px",
-                      marginBottom: 12,
                       background: "#1a1a1a",
                       border: "1px solid rgba(255,255,255,0.1)",
                       borderRadius: 10,
@@ -1083,150 +1257,30 @@ export function WatchPage({
                       cursor: "pointer",
                     }}
                   >
-                    Load more comments
+                    Load more
                   </button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
 
-      {/* Divider before recommended */}
-      <div
-        style={{
-          height: 1,
-          background: "rgba(255,255,255,0.06)",
-          margin: "0 12px",
-        }}
-      />
-
-      {/* Recommended videos */}
-      <div className="pt-2">
-        <h2
-          style={{
-            fontSize: 15,
-            fontWeight: 600,
-            color: "#f1f1f1",
-            padding: "8px 12px 4px",
-          }}
-        >
-          Recommended
-        </h2>
-        {relatedLoading ? (
-          Array.from({ length: 5 }).map((_, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders
-            <RelatedSkeleton key={i} />
-          ))
-        ) : related.length === 0 ? (
-          <p
-            style={{ fontSize: 13, color: "#717171", padding: "8px 12px 16px" }}
-            data-ocid="related.empty_state"
-          >
-            No recommendations available.
+        {/* Footer */}
+        <div className="px-4 py-4 text-center">
+          <p style={{ fontSize: 11, color: "#444" }}>
+            &copy; {new Date().getFullYear()}.{" "}
+            <a
+              href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "#555" }}
+            >
+              Built with caffeine.ai
+            </a>
           </p>
-        ) : (
-          <>
-            {related.map((v, i) => (
-              <button
-                type="button"
-                key={v.id}
-                className="flex gap-2 w-full text-left px-3 py-2"
-                style={{
-                  cursor: "pointer",
-                  background: "transparent",
-                  border: "none",
-                  transition: "background 0.15s ease",
-                }}
-                onClick={() => onWatch(v.id)}
-                data-ocid={i < 3 ? `related.item.${i + 1}` : undefined}
-              >
-                <div
-                  style={{
-                    width: 160,
-                    height: 90,
-                    flexShrink: 0,
-                    borderRadius: 8,
-                    overflow: "hidden",
-                    background: "#111",
-                  }}
-                >
-                  <img
-                    src={v.thumbnail || getYtThumbnail(v.id)}
-                    alt={v.title}
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                    onError={(e) => {
-                      const img = e.target as HTMLImageElement;
-                      const fb = getYtThumbnail(v.id);
-                      if (img.src !== fb) img.src = fb;
-                    }}
-                  />
-                </div>
-                <div className="flex-1 min-w-0 py-1">
-                  <p
-                    className="line-clamp-2"
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 500,
-                      color: "#f1f1f1",
-                      lineHeight: "18px",
-                      marginBottom: 3,
-                    }}
-                  >
-                    {v.title}
-                  </p>
-                  <p style={{ fontSize: 12, color: "#717171" }}>
-                    {v.channelTitle}
-                  </p>
-                  <p style={{ fontSize: 12, color: "#717171" }}>
-                    {timeAgo(v.publishedAt)}
-                  </p>
-                </div>
-              </button>
-            ))}
-
-            {/* Load more recommended */}
-            {hasMoreRelated && (
-              <div style={{ padding: "4px 12px 12px" }}>
-                <button
-                  type="button"
-                  onClick={() => setRelatedPage((p) => p + 1)}
-                  data-ocid="related.pagination_next"
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    background: "#1a1a1a",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: 10,
-                    color: "#f1f1f1",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    cursor: "pointer",
-                  }}
-                >
-                  Load more
-                </button>
-              </div>
-            )}
-          </>
-        )}
+        </div>
       </div>
-
-      {/* Footer */}
-      <div className="px-4 py-4 text-center">
-        <p style={{ fontSize: 11, color: "#444" }}>
-          &copy; {new Date().getFullYear()}.{" "}
-          <a
-            href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: "#555" }}
-          >
-            Built with caffeine.ai
-          </a>
-        </p>
-      </div>
+      {/* end scrollable section */}
     </div>
   );
 }

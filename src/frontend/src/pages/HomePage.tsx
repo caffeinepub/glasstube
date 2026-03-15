@@ -168,7 +168,7 @@ export function HomePage({
           background: "rgba(0,0,0,0.45)",
           backdropFilter: "blur(20px) saturate(180%)",
           WebkitBackdropFilter: "blur(20px) saturate(180%)",
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
+          // border removed
         }}
         data-ocid="home.filter.tab"
       >

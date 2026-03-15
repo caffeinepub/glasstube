@@ -96,7 +96,8 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
         background: "rgba(0,0,0,0.55)",
         backdropFilter: "blur(20px) saturate(180%)",
         WebkitBackdropFilter: "blur(20px) saturate(180%)",
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
+        border: "none",
+        boxShadow: "none",
       }}
     >
       <div
@@ -211,11 +212,11 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
         {/* Search bar + dropdown wrapper */}
         <div
           style={{
-            flexShrink: 0,
+            position: "absolute",
+            top: "50%",
+            transform: "translateY(-50%)",
+            right: 10,
             width: 170,
-            marginRight: 4,
-            alignSelf: "center",
-            position: "relative",
           }}
         >
           <form
