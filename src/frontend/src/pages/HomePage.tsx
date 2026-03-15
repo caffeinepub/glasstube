@@ -3,7 +3,7 @@ import { getHistory } from "@/lib/history";
 import {
   type YouTubeSearchResult,
   type YouTubeVideo,
-  fetchRelatedVideos,
+  fetchInterestVideos,
   fetchTrending,
 } from "@/lib/youtube";
 import { useEffect, useState } from "react";
@@ -97,16 +97,26 @@ export function HomePage({
           const history = getHistory();
           setHasHistory(history.length > 0);
           if (history.length > 0) {
-            const related = await fetchRelatedVideos(history[0].id);
+            // Use watch history to load interest-based content
+            // Extract titles and category IDs from history for personalization
+            const historyTitles = history.slice(0, 5).map((h) => h.title);
+            const historyCategoryIds = history
+              .slice(0, 5)
+              .map((h) => (h as any).categoryId || "")
+              .filter(Boolean);
+            const results = await fetchInterestVideos(
+              historyTitles,
+              historyCategoryIds,
+            );
             if (!cancelled) {
-              if (related.length >= 8) {
-                setVideos(related);
+              if (results.length >= 6) {
+                setVideos(results);
               } else {
                 // Pad with trending, filtering duplicates
                 const trending = await fetchTrending(undefined);
-                const relatedIds = new Set(related.map((v) => v.id));
-                const padded = trending.filter((v) => !relatedIds.has(v.id));
-                setVideos([...related, ...padded]);
+                const resultIds = new Set(results.map((v) => v.id));
+                const padded = trending.filter((v) => !resultIds.has(v.id));
+                setVideos([...results, ...padded]);
               }
               setLoading(false);
             }

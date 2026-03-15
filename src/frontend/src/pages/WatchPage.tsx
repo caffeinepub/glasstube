@@ -6,9 +6,11 @@ import {
   updateResumeTime,
 } from "@/lib/history";
 import {
+  type YouTubeComment,
   type YouTubeSearchResult,
   type YouTubeVideo,
-  fetchRelatedVideos,
+  fetchInterestVideos,
+  fetchVideoComments,
   fetchVideoDetails,
   getYtThumbnail,
 } from "@/lib/youtube";
@@ -120,6 +122,18 @@ function useAmbientMode(
   }, [videoId, canvasRef]);
 }
 
+function formatDate(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+const PAGE_SIZE = 10;
+
 export function WatchPage({
   videoId,
   onWatch,
@@ -127,22 +141,52 @@ export function WatchPage({
   startTime = 0,
 }: WatchPageProps) {
   const [video, setVideo] = useState<YouTubeVideo | null>(null);
-  const [related, setRelated] = useState<YouTubeSearchResult[]>([]);
+  const [allRelated, setAllRelated] = useState<YouTubeSearchResult[]>([]);
+  const [relatedPage, setRelatedPage] = useState(1);
+  const [allComments, setAllComments] = useState<YouTubeComment[]>([]);
+  const [commentsPage, setCommentsPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [relatedLoading, setRelatedLoading] = useState(true);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [descExpanded, setDescExpanded] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
-  const [liked, setLiked] = useState(false);
   const [playerHovered, setPlayerHovered] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fsAnimating, setFsAnimating] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
   const ambientCanvasRef = useRef<HTMLCanvasElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const playerCardRef = useRef<HTMLDivElement>(null);
+  const playerWrapRef = useRef<HTMLDivElement>(null);
   const startTimeRef = useRef<number>(Date.now());
   const currentResumeRef = useRef<number>(startTime);
   const isPlayingRef = useRef<boolean>(false);
 
   useAmbientMode(videoId, ambientCanvasRef);
+
+  // Derived slices
+  const related = allRelated.slice(0, relatedPage * PAGE_SIZE);
+  const hasMoreRelated = allRelated.length > relatedPage * PAGE_SIZE;
+  const comments = allComments.slice(0, commentsPage * PAGE_SIZE);
+  const hasMoreComments = allComments.length > commentsPage * PAGE_SIZE;
+
+  // Fullscreen state + smooth animation
+  useEffect(() => {
+    const handleFsChange = () => {
+      const entering = !!document.fullscreenElement;
+      setFsAnimating(true);
+      setIsFullscreen(entering);
+      setTimeout(() => setFsAnimating(false), 400);
+    };
+    document.addEventListener("fullscreenchange", handleFsChange);
+    document.addEventListener("webkitfullscreenchange", handleFsChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFsChange);
+      document.removeEventListener("webkitfullscreenchange", handleFsChange);
+    };
+  }, []);
 
   // Resume time tracking
   useEffect(() => {
@@ -190,60 +234,85 @@ export function WatchPage({
     setRelatedLoading(true);
     setError(null);
     setVideo(null);
-    setRelated([]);
+    setAllRelated([]);
+    setRelatedPage(1);
+    setAllComments([]);
+    setCommentsPage(1);
+    setCommentsOpen(false);
     setDescExpanded(false);
     setSubscribed(false);
-    setLiked(false);
 
-    fetchVideoDetails(videoId)
-      .then((data) => {
-        if (!cancelled) {
-          setVideo(data);
-          setLoading(false);
+    async function loadAll() {
+      try {
+        const data = await fetchVideoDetails(videoId);
+        if (cancelled) return;
+        setVideo(data);
+        setLoading(false);
 
-          if (data) {
-            const existing = getHistory().find(
-              (e: HistoryEntry) => e.id === data.id,
-            );
-            saveToHistory({
-              id: data.id,
-              title: data.title,
-              channelTitle: data.channelTitle,
-              channelId: data.channelId,
-              channelThumbnail: data.channelThumbnail,
-              thumbnail: data.thumbnail,
-              publishedAt: data.publishedAt,
-              duration: data.duration,
-              resumeTime: existing?.resumeTime ?? startTime,
-            });
-          }
-
-          fetchRelatedVideos(videoId, data?.categoryId)
-            .then((rel) => {
-              if (!cancelled) {
-                setRelated(rel);
-                setRelatedLoading(false);
-              }
-            })
-            .catch(() => {
-              if (!cancelled) setRelatedLoading(false);
-            });
+        if (data) {
+          const existing = getHistory().find(
+            (e: HistoryEntry) => e.id === data.id,
+          );
+          saveToHistory({
+            id: data.id,
+            title: data.title,
+            channelTitle: data.channelTitle,
+            channelId: data.channelId,
+            channelThumbnail: data.channelThumbnail,
+            thumbnail: data.thumbnail,
+            publishedAt: data.publishedAt,
+            duration: data.duration,
+            resumeTime: existing?.resumeTime ?? startTime,
+          });
         }
-      })
-      .catch((err) => {
+
+        // Build recommendations from watch history (same as home feed)
+        const history = getHistory();
+        const historyTitles = history.map((h: HistoryEntry) => h.title);
+        const historyCategoryIds: string[] = [];
+        if (data?.categoryId) historyCategoryIds.push(data.categoryId);
+
+        fetchInterestVideos(historyTitles, historyCategoryIds)
+          .then((rel) => {
+            if (!cancelled) {
+              // Exclude current video
+              const filtered = rel.filter((v) => v.id !== videoId);
+              setAllRelated(filtered);
+              setRelatedLoading(false);
+            }
+          })
+          .catch(() => {
+            if (!cancelled) setRelatedLoading(false);
+          });
+      } catch (err: any) {
         if (!cancelled) {
           setError(err.message);
           setLoading(false);
           setRelatedLoading(false);
         }
-      });
+      }
+    }
+
+    loadAll();
 
     return () => {
       cancelled = true;
     };
   }, [videoId, startTime]);
 
-  function handleFullscreen() {
+  // Load comments when section is opened
+  async function handleToggleComments() {
+    const willOpen = !commentsOpen;
+    setCommentsOpen(willOpen);
+    if (willOpen && allComments.length === 0 && !commentsLoading) {
+      setCommentsLoading(true);
+      const result = await fetchVideoComments(videoId);
+      setAllComments(result);
+      setCommentsLoading(false);
+    }
+  }
+
+  async function handleFullscreen() {
     const el = playerCardRef.current as
       | (HTMLElement & {
           webkitRequestFullscreen?: () => Promise<void>;
@@ -251,12 +320,64 @@ export function WatchPage({
         })
       | null;
     if (!el) return;
-    if (el.requestFullscreen) {
-      el.requestFullscreen();
-    } else if (el.webkitRequestFullscreen) {
-      el.webkitRequestFullscreen();
-    } else if (el.mozRequestFullScreen) {
-      el.mozRequestFullScreen();
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        if (
+          screen.orientation &&
+          (screen.orientation as ScreenOrientation & { unlock?: () => void })
+            .unlock
+        ) {
+          (screen.orientation as ScreenOrientation & { unlock?: () => void })
+            .unlock!();
+        }
+      } else {
+        if (el.requestFullscreen) {
+          await el.requestFullscreen();
+        } else if (el.webkitRequestFullscreen) {
+          await el.webkitRequestFullscreen();
+        } else if (el.mozRequestFullScreen) {
+          await el.mozRequestFullScreen();
+        }
+        if (
+          (
+            screen.orientation as ScreenOrientation & {
+              lock?: (o: string) => Promise<void>;
+            }
+          )?.lock
+        ) {
+          try {
+            await (
+              screen.orientation as ScreenOrientation & {
+                lock?: (o: string) => Promise<void>;
+              }
+            ).lock!("landscape");
+          } catch {
+            // Some browsers don't support lock; ignore
+          }
+        }
+      }
+    } catch {
+      // Ignore fullscreen errors
+    }
+  }
+
+  async function handleCopyLink() {
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch {
+      const el = document.createElement("textarea");
+      el.value = url;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
     }
   }
 
@@ -273,10 +394,41 @@ export function WatchPage({
   const iframeSrc = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1&enablejsapi=1${startTime > 0 ? `&start=${startTime}` : ""}`;
 
   return (
-    <div className="animate-fade-in" data-ocid="player.panel">
+    <div className="animate-fade-in" data-ocid="player.panel" style={{}}>
+      {/* Fullscreen transition overlay */}
+      <style>{`
+        @keyframes fs-enter {
+          from { opacity: 0; transform: scale(0.96); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+        @keyframes fs-exit {
+          from { opacity: 0; transform: scale(1.04); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+        .fs-animating-enter { animation: fs-enter 0.38s cubic-bezier(0.22,1,0.36,1) forwards; }
+        .fs-animating-exit  { animation: fs-exit  0.38s cubic-bezier(0.22,1,0.36,1) forwards; }
+        #player-card-inner:-webkit-full-screen { background: #000; }
+        #player-card-inner:fullscreen { background: #000; }
+      `}</style>
+
       {/* Outer ambient + player wrapper */}
-      <div style={{ position: "relative", padding: "12px 12px 0" }}>
-        {/* Ambient canvas — GPU-composited layer */}
+      <div
+        ref={playerWrapRef}
+        className={
+          fsAnimating
+            ? isFullscreen
+              ? "fs-animating-enter"
+              : "fs-animating-exit"
+            : ""
+        }
+        style={{
+          position: "relative",
+          padding: "12px 12px 0",
+          transition: "padding 0.38s cubic-bezier(0.22,1,0.36,1)",
+          willChange: "transform, opacity",
+        }}
+      >
+        {/* Ambient canvas */}
         <canvas
           ref={ambientCanvasRef}
           width={640}
@@ -308,6 +460,7 @@ export function WatchPage({
         >
           <div
             ref={playerCardRef}
+            id="player-card-inner"
             style={{
               borderRadius: 12,
               overflow: "hidden",
@@ -346,7 +499,7 @@ export function WatchPage({
             <iframe
               ref={iframeRef}
               src={iframeSrc}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
               allowFullScreen
               className="w-full h-full"
               style={{ position: "relative", zIndex: 1 }}
@@ -375,18 +528,30 @@ export function WatchPage({
                 alignItems: "center",
                 justifyContent: "center",
                 cursor: "pointer",
-                transition: "background 0.15s ease",
+                transition: "background 0.2s ease, transform 0.2s ease",
               }}
             >
-              <svg
-                aria-hidden="true"
-                width="14"
-                height="14"
-                fill="#ffffff"
-                viewBox="0 0 24 24"
-              >
-                <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
-              </svg>
+              {isFullscreen ? (
+                <svg
+                  aria-hidden="true"
+                  width="14"
+                  height="14"
+                  fill="#ffffff"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
+                </svg>
+              ) : (
+                <svg
+                  aria-hidden="true"
+                  width="14"
+                  height="14"
+                  fill="#ffffff"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+                </svg>
+              )}
             </button>
           </div>
         </div>
@@ -455,12 +620,6 @@ export function WatchPage({
               </svg>
             </button>
 
-            {/* Views + time */}
-            <p style={{ fontSize: 13, color: "#717171", marginBottom: 10 }}>
-              {formatViews(video.viewCount)} views &bull;{" "}
-              {timeAgo(video.publishedAt)}
-            </p>
-
             {/* Description */}
             {descExpanded && (
               <div
@@ -473,6 +632,10 @@ export function WatchPage({
                 }}
                 data-ocid="player.description.panel"
               >
+                <p style={{ fontSize: 13, color: "#717171", marginBottom: 8 }}>
+                  {formatViews(video.viewCount)} views &bull;{" "}
+                  {timeAgo(video.publishedAt)}
+                </p>
                 <div
                   style={{
                     fontSize: 13,
@@ -573,198 +736,154 @@ export function WatchPage({
               </button>
             </div>
 
-            {/* Action buttons — single row, no wrap, no scroll needed */}
+            {/* 4 action buttons */}
             <div
               className="pb-3"
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
-                overflowX: "auto",
-                msOverflowStyle: "none",
-                scrollbarWidth: "none",
-                WebkitOverflowScrolling: "touch",
+                width: "100%",
               }}
             >
-              {/* Like/dislike pill */}
+              {/* Likes */}
               <div
-                className="flex items-center"
+                className="flex items-center gap-1"
                 style={{
+                  flex: 1,
+                  justifyContent: "center",
+                  padding: "7px 4px",
                   background: "#1a1a1a",
                   borderRadius: 20,
-                  overflow: "hidden",
                   border: "1px solid rgba(255,255,255,0.08)",
-                  flexShrink: 0,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: "#f1f1f1",
+                  whiteSpace: "nowrap",
+                  minWidth: 0,
                 }}
               >
-                <button
-                  type="button"
-                  onClick={() => setLiked((l) => !l)}
-                  className="flex items-center gap-1"
-                  style={{
-                    padding: "5px 9px",
-                    fontSize: 11,
-                    fontWeight: 500,
-                    color: liked ? "#fff" : "#f1f1f1",
-                    background: "none",
-                    borderRight: "1px solid rgba(255,255,255,0.08)",
-                    cursor: "pointer",
-                    transition: "color 0.15s ease",
-                    whiteSpace: "nowrap",
-                  }}
-                  data-ocid="player.like.button"
+                <svg
+                  aria-hidden="true"
+                  width="13"
+                  height="13"
+                  fill="#f1f1f1"
+                  viewBox="0 0 24 24"
                 >
+                  <path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z" />
+                </svg>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {formatLikes(video.likeCount)}
+                </span>
+              </div>
+
+              {/* Duration */}
+              <div
+                className="flex items-center gap-1"
+                style={{
+                  flex: 1,
+                  justifyContent: "center",
+                  padding: "7px 4px",
+                  background: "#1a1a1a",
+                  borderRadius: 20,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: "#f1f1f1",
+                  whiteSpace: "nowrap",
+                  minWidth: 0,
+                }}
+              >
+                <svg
+                  aria-hidden="true"
+                  width="13"
+                  height="13"
+                  fill="#f1f1f1"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z" />
+                </svg>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {video.duration || "--:--"}
+                </span>
+              </div>
+
+              {/* Date */}
+              <div
+                className="flex items-center gap-1"
+                style={{
+                  flex: 1,
+                  justifyContent: "center",
+                  padding: "7px 4px",
+                  background: "#1a1a1a",
+                  borderRadius: 20,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: "#f1f1f1",
+                  whiteSpace: "nowrap",
+                  minWidth: 0,
+                }}
+              >
+                <span
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    fontSize: 11,
+                  }}
+                >
+                  {formatDate(video.publishedAt)}
+                </span>
+              </div>
+
+              {/* Copy Link */}
+              <button
+                type="button"
+                onClick={handleCopyLink}
+                className="flex items-center gap-1"
+                style={{
+                  flex: 1,
+                  justifyContent: "center",
+                  padding: "7px 4px",
+                  background: copySuccess ? "#1a3a1a" : "#1a1a1a",
+                  borderRadius: 20,
+                  border: `1px solid ${copySuccess ? "rgba(0,200,0,0.3)" : "rgba(255,255,255,0.08)"}`,
+                  fontSize: 11,
+                  fontWeight: 500,
+                  color: copySuccess ? "#4caf50" : "#f1f1f1",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  minWidth: 0,
+                  transition:
+                    "background 0.2s ease, color 0.2s ease, border-color 0.2s ease",
+                }}
+                data-ocid="player.secondary_button"
+                aria-label="Copy video link"
+              >
+                {copySuccess ? (
                   <svg
                     aria-hidden="true"
-                    width="14"
-                    height="14"
-                    fill={liked ? "#fff" : "#f1f1f1"}
+                    width="12"
+                    height="12"
+                    fill="#4caf50"
                     viewBox="0 0 24 24"
                   >
-                    <path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z" />
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
                   </svg>
-                  {formatLikes(video.likeCount)}
-                </button>
-                <button
-                  type="button"
-                  className="flex items-center"
-                  style={{
-                    padding: "5px 9px",
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                  }}
-                  aria-label="Dislike"
-                  data-ocid="player.dislike.button"
-                >
+                ) : (
                   <svg
                     aria-hidden="true"
-                    width="14"
-                    height="14"
+                    width="12"
+                    height="12"
                     fill="#f1f1f1"
                     viewBox="0 0 24 24"
                   >
-                    <path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v2c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z" />
+                    <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
                   </svg>
-                </button>
-              </div>
-
-              {/* Share */}
-              <button
-                type="button"
-                className="flex items-center gap-1"
-                style={{
-                  padding: "5px 9px",
-                  background: "#1a1a1a",
-                  borderRadius: 20,
-                  fontSize: 11,
-                  fontWeight: 500,
-                  color: "#f1f1f1",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                  whiteSpace: "nowrap",
-                  transition: "background 0.15s ease",
-                }}
-                data-ocid="player.share.button"
-              >
-                <svg
-                  aria-hidden="true"
-                  width="14"
-                  height="14"
-                  fill="#f1f1f1"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z" />
-                </svg>
-                Share
-              </button>
-
-              {/* Save */}
-              <button
-                type="button"
-                className="flex items-center gap-1"
-                style={{
-                  padding: "5px 9px",
-                  background: "#1a1a1a",
-                  borderRadius: 20,
-                  fontSize: 11,
-                  fontWeight: 500,
-                  color: "#f1f1f1",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                  whiteSpace: "nowrap",
-                  transition: "background 0.15s ease",
-                }}
-                data-ocid="player.save.button"
-              >
-                <svg
-                  aria-hidden="true"
-                  width="14"
-                  height="14"
-                  fill="#f1f1f1"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14l-4-4-4 4V5h12v12l-4-4-4 4z" />
-                </svg>
-                Save
-              </button>
-
-              {/* Download — icon only */}
-              <button
-                type="button"
-                className="flex items-center"
-                aria-label="Download"
-                style={{
-                  padding: "5px 10px",
-                  background: "#1a1a1a",
-                  borderRadius: 20,
-                  color: "#f1f1f1",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                  transition: "background 0.15s ease",
-                }}
-                data-ocid="player.secondary_button"
-              >
-                <svg
-                  aria-hidden="true"
-                  width="14"
-                  height="14"
-                  fill="#f1f1f1"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-                </svg>
-              </button>
-
-              {/* Clip — icon only */}
-              <button
-                type="button"
-                className="flex items-center"
-                aria-label="Clip"
-                style={{
-                  padding: "5px 10px",
-                  background: "#1a1a1a",
-                  borderRadius: 20,
-                  color: "#f1f1f1",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                  transition: "background 0.15s ease",
-                }}
-                data-ocid="player.toggle"
-              >
-                <svg
-                  aria-hidden="true"
-                  width="14"
-                  height="14"
-                  fill="#f1f1f1"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z" />
-                </svg>
+                )}
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {copySuccess ? "Copied!" : "Copy Link"}
+                </span>
               </button>
             </div>
           </>
@@ -780,7 +899,209 @@ export function WatchPage({
         }}
       />
 
-      {/* Related videos */}
+      {/* Comments section (collapsible) */}
+      <div data-ocid="comments.panel">
+        <button
+          type="button"
+          className="w-full flex items-center justify-between"
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: "10px 12px 8px",
+          }}
+          onClick={handleToggleComments}
+          data-ocid="comments.toggle"
+        >
+          <div className="flex items-center gap-2">
+            <svg
+              aria-hidden="true"
+              width="18"
+              height="18"
+              fill="#f1f1f1"
+              viewBox="0 0 24 24"
+            >
+              <path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18z" />
+            </svg>
+            <span style={{ fontSize: 15, fontWeight: 600, color: "#f1f1f1" }}>
+              Comments
+            </span>
+          </div>
+          <svg
+            aria-hidden="true"
+            width="18"
+            height="18"
+            fill="#888"
+            viewBox="0 0 24 24"
+            style={{
+              transition: "transform 0.3s cubic-bezier(0.25,0.46,0.45,0.94)",
+              transform: commentsOpen ? "rotate(180deg)" : "rotate(0deg)",
+              willChange: "transform",
+            }}
+          >
+            <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z" />
+          </svg>
+        </button>
+
+        {commentsOpen && (
+          <div
+            className="animate-fade-in"
+            style={{ paddingBottom: 8 }}
+            data-ocid="comments.list"
+          >
+            {commentsLoading ? (
+              <div
+                style={{ padding: "8px 12px" }}
+                data-ocid="comments.loading_state"
+              >
+                {Array.from({ length: 4 }).map((_, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: skeleton
+                  <CommentSkeleton key={i} />
+                ))}
+              </div>
+            ) : allComments.length === 0 ? (
+              <p
+                style={{
+                  fontSize: 13,
+                  color: "#717171",
+                  padding: "8px 12px 16px",
+                }}
+                data-ocid="comments.empty_state"
+              >
+                Comments are disabled for this video.
+              </p>
+            ) : (
+              <div style={{ padding: "0 12px" }}>
+                {comments.map((c, i) => (
+                  <div
+                    key={c.id}
+                    className="flex gap-3"
+                    style={{ marginBottom: 16 }}
+                    data-ocid={i < 3 ? `comments.item.${i + 1}` : undefined}
+                  >
+                    <div
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: "50%",
+                        overflow: "hidden",
+                        flexShrink: 0,
+                        background: getAvatarColor(c.authorName),
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: "#fff",
+                      }}
+                    >
+                      {c.authorAvatar ? (
+                        <img
+                          src={c.authorAvatar}
+                          alt={c.authorName}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                          }}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display =
+                              "none";
+                          }}
+                        />
+                      ) : (
+                        c.authorName.charAt(0).toUpperCase()
+                      )}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        className="flex items-center gap-2"
+                        style={{ marginBottom: 3 }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: "#f1f1f1",
+                          }}
+                        >
+                          {c.authorName}
+                        </span>
+                        <span style={{ fontSize: 11, color: "#717171" }}>
+                          {timeAgo(c.publishedAt)}
+                        </span>
+                      </div>
+                      <p
+                        style={{
+                          fontSize: 13,
+                          color: "#d0d0d0",
+                          lineHeight: "18px",
+                          wordBreak: "break-word",
+                        }}
+                        // biome-ignore lint/security/noDangerouslySetInnerHtml: YouTube comment HTML
+                        dangerouslySetInnerHTML={{ __html: c.text }}
+                      />
+                      {c.likeCount > 0 && (
+                        <div
+                          className="flex items-center gap-1"
+                          style={{ marginTop: 5 }}
+                        >
+                          <svg
+                            aria-hidden="true"
+                            width="12"
+                            height="12"
+                            fill="#717171"
+                            viewBox="0 0 24 24"
+                          >
+                            <path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z" />
+                          </svg>
+                          <span style={{ fontSize: 11, color: "#717171" }}>
+                            {c.likeCount.toLocaleString()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Load more comments */}
+                {hasMoreComments && (
+                  <button
+                    type="button"
+                    onClick={() => setCommentsPage((p) => p + 1)}
+                    data-ocid="comments.pagination_next"
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      marginBottom: 12,
+                      background: "#1a1a1a",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: 10,
+                      color: "#f1f1f1",
+                      fontSize: 13,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Load more comments
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Divider before recommended */}
+      <div
+        style={{
+          height: 1,
+          background: "rgba(255,255,255,0.06)",
+          margin: "0 12px",
+        }}
+      />
+
+      {/* Recommended videos */}
       <div className="pt-2">
         <h2
           style={{
@@ -790,14 +1111,23 @@ export function WatchPage({
             padding: "8px 12px 4px",
           }}
         >
-          Up next
+          Recommended
         </h2>
-        {relatedLoading
-          ? Array.from({ length: 6 }).map((_, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders
-              <RelatedSkeleton key={i} />
-            ))
-          : related.map((v, i) => (
+        {relatedLoading ? (
+          Array.from({ length: 5 }).map((_, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders
+            <RelatedSkeleton key={i} />
+          ))
+        ) : related.length === 0 ? (
+          <p
+            style={{ fontSize: 13, color: "#717171", padding: "8px 12px 16px" }}
+            data-ocid="related.empty_state"
+          >
+            No recommendations available.
+          </p>
+        ) : (
+          <>
+            {related.map((v, i) => (
               <button
                 type="button"
                 key={v.id}
@@ -855,6 +1185,32 @@ export function WatchPage({
                 </div>
               </button>
             ))}
+
+            {/* Load more recommended */}
+            {hasMoreRelated && (
+              <div style={{ padding: "4px 12px 12px" }}>
+                <button
+                  type="button"
+                  onClick={() => setRelatedPage((p) => p + 1)}
+                  data-ocid="related.pagination_next"
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    background: "#1a1a1a",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: 10,
+                    color: "#f1f1f1",
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  Load more
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Footer */}
@@ -886,6 +1242,22 @@ function RelatedSkeleton() {
         <div className="yt-skeleton h-3.5 w-full" style={{ borderRadius: 4 }} />
         <div className="yt-skeleton h-3 w-3/4" style={{ borderRadius: 4 }} />
         <div className="yt-skeleton h-3 w-1/2" style={{ borderRadius: 4 }} />
+      </div>
+    </div>
+  );
+}
+
+function CommentSkeleton() {
+  return (
+    <div className="flex gap-3" style={{ marginBottom: 16 }}>
+      <div
+        className="yt-skeleton flex-shrink-0"
+        style={{ width: 32, height: 32, borderRadius: "50%" }}
+      />
+      <div className="flex-1 pt-1 space-y-2">
+        <div className="yt-skeleton h-3 w-1/3" style={{ borderRadius: 4 }} />
+        <div className="yt-skeleton h-3 w-full" style={{ borderRadius: 4 }} />
+        <div className="yt-skeleton h-3 w-3/4" style={{ borderRadius: 4 }} />
       </div>
     </div>
   );
