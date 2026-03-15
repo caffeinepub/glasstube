@@ -60,33 +60,129 @@ function loadBgState(): NavState[] {
   return [{ page: "home" }];
 }
 
+// SVG Icons for miniplayer controls
+const IconPlay = () => (
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+  >
+    <path d="M8 5v14l11-7z" />
+  </svg>
+);
+
+const IconPause = () => (
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+  >
+    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+  </svg>
+);
+
+const IconClose = () => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+  >
+    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+  </svg>
+);
+
+const IconExpand = () => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+  >
+    <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+  </svg>
+);
+
 // Floating draggable mini player card
 function MiniPlayerCard({
   videoId,
+  startTime,
   onExpand,
   onClose,
 }: {
   videoId: string;
+  startTime: number;
   onExpand: () => void;
   onClose: () => void;
 }) {
   const MINI_W = window.innerWidth < 400 ? 200 : 260;
-  const VIDEO_H = window.innerWidth < 400 ? 112 : 146;
-  const CONTROLS_H = 36;
+  const VIDEO_H = Math.round((MINI_W * 9) / 16);
+  const CONTROLS_H = 40;
   const MINI_H = VIDEO_H + CONTROLS_H;
 
-  // Default position: bottom-right above nav bar (8px from right, 84px from bottom)
+  // Default position: bottom-right above nav bar
   const [pos, setPos] = useState({
-    x: window.innerWidth - MINI_W - 8,
-    y: window.innerHeight - MINI_H - 84,
+    x: window.innerWidth - MINI_W - 10,
+    y: window.innerHeight - MINI_H - 86,
   });
   const [isPlaying, setIsPlaying] = useState(true);
   const [exiting, setExiting] = useState(false);
+  const [playerReady, setPlayerReady] = useState(false);
   const miniIframeRef = useRef<HTMLIFrameElement>(null);
   const dragging = useRef(false);
   const startTouch = useRef({ x: 0, y: 0 });
   const startPos = useRef({ x: 0, y: 0 });
   const totalDrag = useRef(0);
+  const seekDoneRef = useRef(false);
+
+  // Listen for YouTube API messages to seek on ready
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      try {
+        const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        // YouTube fires onReady when the player is ready
+        if (data?.event === "onReady" && !seekDoneRef.current) {
+          seekDoneRef.current = true;
+          if (startTime > 0) {
+            // Seek to the correct position immediately
+            miniIframeRef.current?.contentWindow?.postMessage(
+              JSON.stringify({
+                event: "command",
+                func: "seekTo",
+                args: [startTime, true],
+              }),
+              "*",
+            );
+            // Then ensure it plays
+            setTimeout(() => {
+              miniIframeRef.current?.contentWindow?.postMessage(
+                JSON.stringify({
+                  event: "command",
+                  func: "playVideo",
+                  args: "",
+                }),
+                "*",
+              );
+            }, 150);
+          }
+          setPlayerReady(true);
+        }
+        // Track play/pause state from API
+        if (data?.event === "onStateChange") {
+          if (data.info === 1) setIsPlaying(true); // playing
+          if (data.info === 2) setIsPlaying(false); // paused
+        }
+      } catch {}
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [startTime]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     dragging.current = true;
@@ -119,43 +215,37 @@ function MiniPlayerCard({
     if (totalDrag.current < 8) onExpand();
   };
 
-  const sendIframeCommand = (func: string) => {
+  const sendIframeCommand = (func: string, args?: unknown) => {
     miniIframeRef.current?.contentWindow?.postMessage(
-      JSON.stringify({ event: "command", func, args: "" }),
+      JSON.stringify({ event: "command", func, args: args ?? "" }),
       "*",
     );
   };
 
-  const handlePlayPause = (e: React.MouseEvent) => {
+  const handlePlayPause = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
     if (isPlaying) {
       sendIframeCommand("pauseVideo");
+      setIsPlaying(false);
     } else {
       sendIframeCommand("playVideo");
-    }
-    setIsPlaying(!isPlaying);
-  };
-
-  const handlePiP = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      const iframe = miniIframeRef.current as any;
-      if (iframe?.requestPictureInPicture) {
-        iframe.requestPictureInPicture().catch(() => {});
-      }
-    } catch (_) {
-      // PiP not supported for cross-origin iframes — silently fail
-      // The YouTube iframe itself shows a native PiP button in its controls
+      setIsPlaying(true);
     }
   };
 
-  const handleClose = (e: React.MouseEvent) => {
+  const handleClose = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
     setExiting(true);
     setTimeout(() => onClose(), 280);
   };
 
-  const iframeSrc = `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&mute=0&playsinline=1&origin=${encodeURIComponent(window.location.origin)}`;
+  const handleExpand = (e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    onExpand();
+  };
+
+  // Use &start= as a hint; seekTo on onReady handles the precise seek
+  const iframeSrc = `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&mute=0&playsinline=1${startTime > 0 ? `&start=${Math.floor(startTime)}` : ""}&origin=${encodeURIComponent(window.location.origin)}`;
 
   return (
     <div
@@ -168,14 +258,8 @@ function MiniPlayerCard({
         left: pos.x,
         top: pos.y,
         width: MINI_W,
-        height: MINI_H,
         zIndex: 500,
-        borderRadius: 16,
-        background: "#000",
-        border: "1px solid rgba(255,255,255,0.13)",
-        boxShadow: "0 8px 32px rgba(0,0,0,0.7), 0 2px 8px rgba(0,0,0,0.5)",
-        display: "flex",
-        flexDirection: "column",
+        borderRadius: 18,
         overflow: "hidden",
         touchAction: "none",
         willChange: "transform",
@@ -185,16 +269,36 @@ function MiniPlayerCard({
           : "miniIn 0.32s cubic-bezier(0.32,0.72,0,1)",
         userSelect: "none",
         WebkitUserSelect: "none",
+        // Glass card
+        background: "rgba(12,12,12,0.75)",
+        backdropFilter: "blur(24px) saturate(180%)",
+        WebkitBackdropFilter: "blur(24px) saturate(180%)",
+        border: "1px solid rgba(255,255,255,0.12)",
+        boxShadow:
+          "0 12px 40px rgba(0,0,0,0.75), 0 2px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)",
       }}
     >
       <style>{`
         @keyframes miniIn {
-          from { transform: scale(0.85) translateY(24px) translateZ(0); opacity: 0; }
+          from { transform: scale(0.82) translateY(28px) translateZ(0); opacity: 0; }
           to   { transform: scale(1) translateY(0) translateZ(0); opacity: 1; }
         }
         @keyframes miniOut {
           from { transform: scale(1) translateY(0) translateZ(0); opacity: 1; }
-          to   { transform: scale(0.85) translateY(24px) translateZ(0); opacity: 0; }
+          to   { transform: scale(0.82) translateY(28px) translateZ(0); opacity: 0; }
+        }
+        .mini-ctrl-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: none;
+          cursor: pointer;
+          transition: background 0.15s, transform 0.1s;
+          touch-action: auto;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .mini-ctrl-btn:active {
+          transform: scale(0.88);
         }
       `}</style>
 
@@ -205,13 +309,13 @@ function MiniPlayerCard({
         style={{
           width: "100%",
           height: VIDEO_H,
-          flexShrink: 0,
+          display: "block",
           position: "relative",
           cursor: "pointer",
           background: "#000",
           border: "none",
           padding: 0,
-          display: "block",
+          flexShrink: 0,
         }}
       >
         <iframe
@@ -228,97 +332,119 @@ function MiniPlayerCard({
           }}
           title="Mini player"
         />
+        {/* Loading overlay — hide once player ready */}
+        {!playerReady && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(0,0,0,0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                border: "2.5px solid rgba(255,255,255,0.15)",
+                borderTopColor: "rgba(255,255,255,0.8)",
+                borderRadius: "50%",
+                animation: "miniSpin 0.7s linear infinite",
+              }}
+            />
+            <style>
+              {"@keyframes miniSpin { to { transform: rotate(360deg); } }"}
+            </style>
+          </div>
+        )}
       </button>
 
-      {/* Controls bar */}
+      {/* Glass controls bar */}
       <div
         style={{
           height: CONTROLS_H,
-          flexShrink: 0,
-          background: "rgba(0,0,0,0.85)",
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 10px",
+          padding: "0 8px",
           gap: 4,
+          background: "rgba(255,255,255,0.06)",
+          borderTop: "1px solid rgba(255,255,255,0.08)",
         }}
       >
         {/* Play/Pause */}
         <button
           type="button"
+          className="mini-ctrl-btn"
           onClick={handlePlayPause}
           data-ocid="miniplayer.toggle"
           aria-label={isPlaying ? "Pause" : "Play"}
           style={{
-            background: "none",
-            border: "none",
+            width: 30,
+            height: 30,
+            borderRadius: 8,
+            background: "rgba(255,255,255,0.12)",
             color: "#fff",
-            fontSize: 18,
-            cursor: "pointer",
-            padding: "0 4px",
-            lineHeight: 1,
-            touchAction: "auto",
             flexShrink: 0,
           }}
         >
-          {isPlaying ? "⏸" : "▶"}
+          {isPlaying ? <IconPause /> : <IconPlay />}
         </button>
 
         {/* Now Playing label */}
         <span
           style={{
-            color: "rgba(255,255,255,0.6)",
+            color: "rgba(255,255,255,0.55)",
             fontSize: 10,
+            fontWeight: 500,
             flex: 1,
-            textAlign: "center",
             overflow: "hidden",
             whiteSpace: "nowrap",
             textOverflow: "ellipsis",
+            letterSpacing: "0.02em",
+            paddingLeft: 4,
           }}
         >
           Now Playing
         </span>
 
-        {/* PiP button */}
+        {/* Expand button */}
         <button
           type="button"
-          onClick={handlePiP}
-          data-ocid="miniplayer.pip_button"
-          aria-label="Picture in Picture"
+          className="mini-ctrl-btn"
+          onClick={handleExpand}
+          data-ocid="miniplayer.expand_button"
+          aria-label="Expand"
           style={{
-            background: "none",
-            border: "none",
-            color: "#fff",
-            fontSize: 16,
-            cursor: "pointer",
-            padding: "0 4px",
-            lineHeight: 1,
-            touchAction: "auto",
+            width: 28,
+            height: 28,
+            borderRadius: 7,
+            background: "rgba(255,255,255,0.08)",
+            color: "rgba(255,255,255,0.75)",
             flexShrink: 0,
           }}
         >
-          🖼
+          <IconExpand />
         </button>
 
         {/* Close */}
         <button
           type="button"
+          className="mini-ctrl-btn"
           onClick={handleClose}
           data-ocid="miniplayer.close_button"
           aria-label="Close"
           style={{
-            background: "none",
-            border: "none",
-            color: "#ccc",
-            fontSize: 20,
-            cursor: "pointer",
-            padding: "0 2px",
+            width: 28,
+            height: 28,
+            borderRadius: 7,
+            background: "rgba(255,80,80,0.18)",
+            color: "rgba(255,255,255,0.85)",
             flexShrink: 0,
-            lineHeight: 1,
-            touchAction: "auto",
           }}
         >
-          ×
+          <IconClose />
         </button>
       </div>
     </div>
@@ -426,15 +552,21 @@ export default function App() {
     [pushPage],
   );
 
-  const handleMinimize = useCallback(() => {
-    setNavStack((prev) => {
-      if (prev.length > 1) return prev.slice(0, -1);
-      // If only watch page in stack, go back to background
-      return backgroundNavStack.length > 0
-        ? backgroundNavStack
-        : [{ page: "home" }];
-    });
-  }, [backgroundNavStack]);
+  const handleMinimize = useCallback(
+    (currentTime: number) => {
+      setActiveVideo((prev) =>
+        prev ? { ...prev, startTime: currentTime } : null,
+      );
+      setNavStack((prev) => {
+        if (prev.length > 1) return prev.slice(0, -1);
+        // If only watch page in stack, go back to background
+        return backgroundNavStack.length > 0
+          ? backgroundNavStack
+          : [{ page: "home" }];
+      });
+    },
+    [backgroundNavStack],
+  );
 
   const handleExpand = useCallback(() => {
     if (!activeVideo) return;
@@ -726,6 +858,7 @@ export default function App() {
               onChannelClick={handleChannelClick}
               startTime={activeVideo.startTime}
               isMini={false}
+              isVisible={isWatchPage}
               onMinimize={handleMinimize}
               onExpand={handleExpand}
               onClose={handleClose}
@@ -737,7 +870,9 @@ export default function App() {
       {/* Floating MiniPlayerCard — shown when video is active but not on watch page */}
       {activeVideo && !isWatchPage && (
         <MiniPlayerCard
+          key={`${activeVideo.videoId}-${activeVideo.startTime}`}
           videoId={activeVideo.videoId}
+          startTime={activeVideo.startTime}
           onExpand={handleExpand}
           onClose={handleClose}
         />

@@ -23,7 +23,8 @@ interface WatchPageProps {
   onChannelClick?: (channelId: string, channelTitle: string) => void;
   startTime?: number;
   isMini?: boolean;
-  onMinimize?: () => void;
+  onMinimize?: (currentTime: number) => void;
+  isVisible?: boolean;
   onExpand?: () => void;
   onClose?: () => void;
 }
@@ -146,6 +147,7 @@ export function WatchPage({
   startTime = 0,
   isMini = false,
   onMinimize,
+  isVisible = true,
   onExpand: _onExpand,
   onClose: _onClose,
 }: WatchPageProps) {
@@ -195,7 +197,7 @@ export function WatchPage({
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (!entry.isIntersecting && hasScrolledRef.current) {
-          onMinimize?.();
+          onMinimize?.(currentResumeRef.current);
         }
       },
       { threshold: 0 },
@@ -360,6 +362,16 @@ export function WatchPage({
     };
   }, [videoId, startTime]);
 
+  // Pause main iframe when miniplayer is active
+  useEffect(() => {
+    if (isVisible === false) {
+      iframeRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ event: "command", func: "pauseVideo", args: "" }),
+        "*",
+      );
+    }
+  }, [isVisible]);
+
   // Load comments when section is opened
   async function handleToggleComments() {
     const willOpen = !commentsOpen;
@@ -473,7 +485,7 @@ export function WatchPage({
     if (!el) return;
     const deltaY = e.changedTouches[0].clientY - dragStartY.current;
     if (deltaY > 80) {
-      onMinimize?.();
+      onMinimize?.(currentResumeRef.current);
       el.style.transition = "none";
       el.style.transform = "translateZ(0)";
     } else {
@@ -629,7 +641,7 @@ export function WatchPage({
               {!isMini && onMinimize && (
                 <button
                   type="button"
-                  onClick={onMinimize}
+                  onClick={() => onMinimize?.(currentResumeRef.current)}
                   aria-label="Miniplayer"
                   data-ocid="player.miniplayer.button"
                   style={{
