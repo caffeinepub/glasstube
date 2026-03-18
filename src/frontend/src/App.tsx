@@ -90,7 +90,9 @@ export default function App() {
   }));
   // isDragging as state so the container style re-renders to remove transition
   const [isDragging, setIsDragging] = useState(false);
+  const [miniPlaying, setMiniPlaying] = useState(true);
   const miniRef = useRef<HTMLDivElement>(null);
+  const miniControlsRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const miniDragging = useRef(false);
   const miniDragStart = useRef({ tx: 0, ty: 0, px: 0, py: 0 });
@@ -182,6 +184,7 @@ export default function App() {
   // Minimize: just pop nav stack — do NOT change startTime or reload iframe
   const handleMinimize = useCallback(
     (_currentTime: number) => {
+      setMiniPlaying(true);
       // Reset mini card position to bottom-right
       const newPos = {
         x: window.innerWidth - MINI_W - 10,
@@ -267,6 +270,10 @@ export default function App() {
     if (miniRef.current) {
       miniRef.current.style.left = `${newX}px`;
       miniRef.current.style.top = `${newY}px`;
+    }
+    if (miniControlsRef.current) {
+      miniControlsRef.current.style.left = `${newX}px`;
+      miniControlsRef.current.style.top = `${newY + MINI_H - 48}px`;
     }
     if (innerRef.current) {
       innerRef.current.style.transform = `translate3d(${newX}px, ${newY}px, 0) scale(${scale})`;
@@ -415,7 +422,10 @@ export default function App() {
   // Two-div clip-path architecture for GPU-composited mini-player transition
 
   return (
-    <div className="min-h-screen" style={{ background: "#000000" }}>
+    <div
+      className="min-h-screen"
+      style={{ background: "#000000", overscrollBehavior: "none" }}
+    >
       <TopBar
         onSearch={handleSearch}
         onNavigate={handleNavigate}
@@ -525,11 +535,12 @@ export default function App() {
           NEVER unmounts when activeVideo exists (same videoId) — this keeps the
           iframe alive and playing with zero restart or buffering. */}
       <style>{`
+        html, body { overscroll-behavior: none; }
         @keyframes slideUp {
           from { transform: translateY(100%) scale(0.95) translateZ(0); opacity: 0; }
           to   { transform: translateY(0) scale(1) translateZ(0); opacity: 1; }
         }
-        .watch-enter { animation: slideUp 0.38s cubic-bezier(0.32,0.72,0,1) forwards; }
+        .watch-enter { animation: slideUp 0.45s cubic-bezier(0.34,1.56,0.64,1) forwards; }
       `}</style>
 
       {activeVideo && (
@@ -551,7 +562,7 @@ export default function App() {
                 : `inset(${miniPos.y}px ${Math.max(0, window.innerWidth - miniPos.x - MINI_W)}px ${Math.max(0, window.innerHeight - miniPos.y - MINI_H)}px ${miniPos.x}px round 16px)`,
               transition: isDragging
                 ? "none"
-                : "clip-path 0.35s cubic-bezier(0.32,0.72,0,1)",
+                : "clip-path 0.42s cubic-bezier(0.25,0.46,0.45,0.94)",
               willChange: "clip-path",
             }}
           >
@@ -572,7 +583,7 @@ export default function App() {
                   : `translate3d(${miniPos.x}px, ${miniPos.y}px, 0) scale(${miniScale})`,
                 transition: isDragging
                   ? "none"
-                  : "transform 0.35s cubic-bezier(0.32,0.72,0,1)",
+                  : "transform 0.42s cubic-bezier(0.25,0.46,0.45,0.94)",
                 willChange: "transform",
                 overflow: "hidden",
                 ...(isWatchPage
@@ -628,6 +639,179 @@ export default function App() {
               tabIndex={0}
               aria-label="Expand player"
             />
+          )}
+
+          {/* Mini controls rendered in App — above drag overlay so clicks reach them */}
+          {!isWatchPage && activeVideo && (
+            <div
+              ref={miniControlsRef}
+              style={{
+                position: "fixed",
+                left: miniPos.x,
+                top: miniPos.y + MINI_H - 48,
+                width: MINI_W,
+                height: 48,
+                zIndex: 402,
+                background:
+                  "linear-gradient(to top, rgba(0,0,0,0.88), transparent)",
+                borderBottomLeftRadius: 16,
+                borderBottomRightRadius: 16,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0 10px",
+                pointerEvents: "auto",
+                gap: 6,
+              }}
+            >
+              {/* Play/Pause */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const iframe = document.querySelector(
+                    '[data-ocid="player.panel"] iframe',
+                  ) as HTMLIFrameElement;
+                  if (iframe?.contentWindow) {
+                    if (miniPlaying) {
+                      iframe.contentWindow.postMessage(
+                        JSON.stringify({
+                          event: "command",
+                          func: "pauseVideo",
+                          args: "",
+                        }),
+                        "*",
+                      );
+                      setMiniPlaying(false);
+                    } else {
+                      iframe.contentWindow.postMessage(
+                        JSON.stringify({
+                          event: "command",
+                          func: "playVideo",
+                          args: "",
+                        }),
+                        "*",
+                      );
+                      setMiniPlaying(true);
+                    }
+                  }
+                }}
+                aria-label={miniPlaying ? "Pause" : "Play"}
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 10,
+                  background: "rgba(255,255,255,0.18)",
+                  border: "1px solid rgba(255,255,255,0.22)",
+                  color: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                {miniPlaying ? (
+                  <svg
+                    aria-hidden="true"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="white"
+                  >
+                    <rect x="6" y="4" width="4" height="16" />
+                    <rect x="14" y="4" width="4" height="16" />
+                  </svg>
+                ) : (
+                  <svg
+                    aria-hidden="true"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="white"
+                  >
+                    <polygon points="5,3 19,12 5,21" />
+                  </svg>
+                )}
+              </button>
+
+              {/* Spacer */}
+              <span style={{ flex: 1 }} />
+
+              {/* Expand */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleExpand();
+                }}
+                aria-label="Expand"
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 10,
+                  background: "rgba(255,255,255,0.18)",
+                  border: "1px solid rgba(255,255,255,0.22)",
+                  color: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                <svg
+                  aria-hidden="true"
+                  width="15"
+                  height="15"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="white"
+                  strokeWidth="2.5"
+                >
+                  <polyline points="15,3 21,3 21,9" />
+                  <polyline points="9,21 3,21 3,15" />
+                  <line x1="21" y1="3" x2="14" y2="10" />
+                  <line x1="3" y1="21" x2="10" y2="14" />
+                </svg>
+              </button>
+
+              {/* Close */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleClose();
+                }}
+                aria-label="Close"
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 10,
+                  background: "rgba(255,255,255,0.18)",
+                  border: "1px solid rgba(255,255,255,0.22)",
+                  color: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                <svg
+                  aria-hidden="true"
+                  width="15"
+                  height="15"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="white"
+                  strokeWidth="2.5"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
           )}
         </>
       )}

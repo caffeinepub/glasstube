@@ -158,10 +158,14 @@ export function HomePage({
     <div className="animate-fade-in">
       {/* Category chips - glass blur */}
       <div
-        className="flex items-center gap-2 overflow-x-auto px-3 py-3"
+        className="flex items-center gap-2 px-3 py-3"
+        // category bar scroll
+        // eslint-disable-next-line
         style={{
           scrollbarWidth: "none",
           msOverflowStyle: "none",
+          overflowX: "auto",
+          WebkitOverflowScrolling: "touch",
           position: "sticky",
           top: "calc(64px + env(safe-area-inset-top, 0px))",
           zIndex: 10,

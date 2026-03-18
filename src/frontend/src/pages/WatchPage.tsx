@@ -140,14 +140,6 @@ function formatDate(iso: string): string {
 
 const PAGE_SIZE = 10;
 
-// Video size presets
-const VIDEO_SIZES = [
-  { label: "S", title: "Compact", padding: "12px 28px 0" },
-  { label: "M", title: "Normal", padding: "12px 12px 0" },
-  { label: "L", title: "Large", padding: "12px 4px 0" },
-  { label: "⬛", title: "Cinema", padding: "8px 0 0" },
-];
-
 export function WatchPage({
   videoId,
   onWatch,
@@ -155,8 +147,8 @@ export function WatchPage({
   startTime = 0,
   isMini = false,
   onMinimize,
-  onExpand,
-  onClose,
+  onExpand: _onExpand,
+  onClose: _onClose,
 }: WatchPageProps) {
   const [video, setVideo] = useState<YouTubeVideo | null>(null);
   const [allRelated, setAllRelated] = useState<YouTubeSearchResult[]>([]);
@@ -175,17 +167,12 @@ export function WatchPage({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fsAnimating, setFsAnimating] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
-  const [miniPlaying, setMiniPlaying] = useState(true);
-
-  // Video size controls
-  const [videoSizeIndex, setVideoSizeIndex] = useState(1); // 0=compact,1=normal,2=large,3=cinema
-  const [sizeControlsVisible, setSizeControlsVisible] = useState(false);
-  const [tapOverlayEnabled, setTapOverlayEnabled] = useState(true);
-  const sizeHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [_miniPlaying, setMiniPlaying] = useState(true);
 
   const ambientCanvasRef = useRef<HTMLCanvasElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const playerCardRef = useRef<HTMLDivElement>(null);
+  const swipeOverlayRef = useRef<HTMLDivElement>(null);
   const playerWrapRef = useRef<HTMLDivElement>(null);
   const startTimeRef = useRef<number>(Date.now());
   const currentResumeRef = useRef<number>(startTime);
@@ -195,26 +182,10 @@ export function WatchPage({
 
   useAmbientMode(videoId, ambientCanvasRef);
 
-  // Show size controls and reset auto-hide timer
-  function showSizeControls() {
-    setSizeControlsVisible(true);
-    if (sizeHideTimer.current) clearTimeout(sizeHideTimer.current);
-    sizeHideTimer.current = setTimeout(
-      () => setSizeControlsVisible(false),
-      3000,
-    );
-  }
-
-  // Clean up size hide timer on unmount
+  // Reset swipe animation styles when isMini changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: ref mutation intentional
   useEffect(() => {
-    return () => {
-      if (sizeHideTimer.current) clearTimeout(sizeHideTimer.current);
-    };
-  }, []);
-
-  // Reset swipe animation styles when isMini becomes true (prevents black screen)
-  useEffect(() => {
-    if (isMini && swipeContainerRef.current) {
+    if (swipeContainerRef.current) {
       swipeContainerRef.current.style.transition = "none";
       swipeContainerRef.current.style.transform = "";
       swipeContainerRef.current.style.opacity = "";
@@ -290,9 +261,13 @@ export function WatchPage({
             setMiniPlaying(true);
             startTimeRef.current =
               Date.now() - (currentResumeRef.current - startTime) * 1000;
+            if ("mediaSession" in navigator)
+              navigator.mediaSession.playbackState = "playing";
           } else if (data.info === 2 || data.info === 0) {
             isPlayingRef.current = false;
             setMiniPlaying(false);
+            if ("mediaSession" in navigator)
+              navigator.mediaSession.playbackState = "paused";
           }
         }
       } catch {
@@ -308,6 +283,34 @@ export function WatchPage({
       updateResumeTime(videoId, currentResumeRef.current);
     };
   }, [videoId, startTime]);
+
+  // Media Session API — show video in phone notifications/recents
+  useEffect(() => {
+    if (!("mediaSession" in navigator) || !video) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: video.title,
+      artist: video.channelTitle,
+      artwork: [{ src: video.thumbnail, sizes: "480x360", type: "image/jpeg" }],
+    });
+    navigator.mediaSession.setActionHandler("play", () => {
+      iframeRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ event: "command", func: "playVideo", args: "" }),
+        "*",
+      );
+      setMiniPlaying(true);
+    });
+    navigator.mediaSession.setActionHandler("pause", () => {
+      iframeRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ event: "command", func: "pauseVideo", args: "" }),
+        "*",
+      );
+      setMiniPlaying(false);
+    });
+    return () => {
+      navigator.mediaSession.setActionHandler("play", null);
+      navigator.mediaSession.setActionHandler("pause", null);
+    };
+  }, [video]);
 
   useEffect(() => {
     let cancelled = false;
@@ -466,12 +469,10 @@ export function WatchPage({
     }
   }
 
-  async function handleCopyLink() {
+  async function handleDownload() {
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     try {
       await navigator.clipboard.writeText(url);
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
     } catch {
       const el = document.createElement("textarea");
       el.value = url;
@@ -479,9 +480,10 @@ export function WatchPage({
       el.select();
       document.execCommand("copy");
       document.body.removeChild(el);
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
     }
+    setCopySuccess(true);
+    setTimeout(() => setCopySuccess(false), 2000);
+    window.open("https://vidssave.com/yt", "_blank");
   }
 
   // Swipe-down to minimize gesture (whole page)
@@ -504,6 +506,7 @@ export function WatchPage({
     const dy = e.touches[0].clientY - dragStartY.current;
     const dx = e.touches[0].clientX - swipeDragX.current;
     if (Math.abs(dy) > Math.abs(dx) && dy > 0 && swipeContainerRef.current) {
+      e.preventDefault();
       const progress = Math.min(1, dy / 260);
       const scale = 1 - progress * 0.12;
       const opacity = 1 - progress * 0.3;
@@ -536,18 +539,15 @@ export function WatchPage({
     }
   };
 
-  const iframeSrc = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1&enablejsapi=1${startTime > 0 ? `&start=${startTime}` : ""}`;
+  const iframeSrc = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "")}${startTime > 0 ? `&start=${startTime}` : ""}`;
 
   // Current size padding
-  const currentPadding = isMini ? "0" : VIDEO_SIZES[videoSizeIndex].padding;
+  const currentPadding = isMini ? "0" : "12px 12px 0";
 
   return (
     <div
       ref={swipeContainerRef}
       className="animate-fade-in"
-      onTouchStart={handleSwipeTouchStart}
-      onTouchMove={handleSwipeTouchMove}
-      onTouchEnd={handleSwipeTouchEnd}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -626,17 +626,11 @@ export function WatchPage({
             <div
               ref={playerCardRef}
               id="player-card-inner"
-              onClick={!isMini ? showSizeControls : undefined}
-              onKeyDown={
-                !isMini
-                  ? (e) => {
-                      if (e.key === "Enter" || e.key === " ")
-                        showSizeControls();
-                    }
-                  : undefined
-              }
+              onTouchStart={!isMini ? handleSwipeTouchStart : undefined}
+              onTouchMove={!isMini ? handleSwipeTouchMove : undefined}
+              onTouchEnd={!isMini ? handleSwipeTouchEnd : undefined}
               style={{
-                borderRadius: isMini ? 0 : 12,
+                borderRadius: isMini ? 0 : 20,
                 overflow: "hidden",
                 border: isMini ? "none" : "1px solid rgba(255,255,255,0.12)",
                 boxShadow: playerHovered
@@ -655,6 +649,27 @@ export function WatchPage({
                 cursor: "pointer",
               }}
             >
+              {/* Swipe detection overlay - captures swipe-down gesture on video */}
+              {!isMini && (
+                <div
+                  ref={swipeOverlayRef}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: "50%",
+                    zIndex: 5,
+                    background: "transparent",
+                    cursor: "default",
+                    touchAction: "pan-x",
+                  }}
+                  onTouchStart={handleSwipeTouchStart}
+                  onTouchMove={handleSwipeTouchMove}
+                  onTouchEnd={handleSwipeTouchEnd}
+                />
+              )}
+
               {/* Reflective top-edge highlight */}
               <div
                 style={{
@@ -680,266 +695,6 @@ export function WatchPage({
                 style={{ position: "relative", zIndex: 1 }}
                 title="YouTube video player"
               />
-
-              {/* Transparent tap-intercept overlay — catches taps to show size controls.
-                  Sits above iframe (which swallows all pointer events) but below mini controls. */}
-              {!isMini && tapOverlayEnabled && (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    zIndex: 8,
-                    background: "transparent",
-                    cursor: "default",
-                  }}
-                  onTouchStart={(e) => {
-                    e.stopPropagation();
-                    showSizeControls();
-                    setTapOverlayEnabled(false);
-                    setTimeout(() => setTapOverlayEnabled(true), 3200);
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    showSizeControls();
-                    setTapOverlayEnabled(false);
-                    setTimeout(() => setTapOverlayEnabled(true), 3200);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.stopPropagation();
-                      showSizeControls();
-                      setTapOverlayEnabled(false);
-                      setTimeout(() => setTapOverlayEnabled(true), 3200);
-                    }
-                  }}
-                />
-              )}
-
-              {/* Mini mode controls overlay */}
-              {isMini && (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    zIndex: 30,
-                    background:
-                      "linear-gradient(to bottom, transparent 45%, rgba(0,0,0,0.82))",
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "flex-end",
-                    pointerEvents: "none",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      padding: "5px 8px 7px",
-                      pointerEvents: "auto",
-                    }}
-                  >
-                    {/* Play/Pause */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (miniPlaying) {
-                          iframeRef.current?.contentWindow?.postMessage(
-                            JSON.stringify({
-                              event: "command",
-                              func: "pauseVideo",
-                              args: "",
-                            }),
-                            "*",
-                          );
-                          setMiniPlaying(false);
-                        } else {
-                          iframeRef.current?.contentWindow?.postMessage(
-                            JSON.stringify({
-                              event: "command",
-                              func: "playVideo",
-                              args: "",
-                            }),
-                            "*",
-                          );
-                          setMiniPlaying(true);
-                        }
-                      }}
-                      aria-label={miniPlaying ? "Pause" : "Play"}
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 7,
-                        background: "rgba(255,255,255,0.12)",
-                        border: "none",
-                        color: "#fff",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        cursor: "pointer",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {miniPlaying ? (
-                        <svg
-                          aria-hidden="true"
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="currentColor"
-                        >
-                          <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                        </svg>
-                      ) : (
-                        <svg
-                          aria-hidden="true"
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="currentColor"
-                        >
-                          <path d="M8 5v14l11-7z" />
-                        </svg>
-                      )}
-                    </button>
-
-                    {/* Expand */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onExpand?.();
-                      }}
-                      aria-label="Expand"
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 7,
-                        background: "rgba(255,255,255,0.12)",
-                        border: "none",
-                        color: "#fff",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        cursor: "pointer",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <svg
-                        aria-hidden="true"
-                        width="13"
-                        height="13"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
-                      </svg>
-                    </button>
-
-                    {/* Close */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onClose?.();
-                      }}
-                      aria-label="Close"
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 7,
-                        background: "rgba(255,255,255,0.12)",
-                        border: "none",
-                        color: "#fff",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        cursor: "pointer",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <svg
-                        aria-hidden="true"
-                        width="13"
-                        height="13"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Video size adjustment controls (full-screen mode only) */}
-              {!isMini && (
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: 44,
-                    left: 8,
-                    zIndex: 25,
-                    display: "flex",
-                    gap: 6,
-                    opacity: sizeControlsVisible ? 1 : 0,
-                    transform: sizeControlsVisible
-                      ? "scale(1) translateY(0)"
-                      : "scale(0.88) translateY(6px)",
-                    transition: "opacity 0.3s ease, transform 0.3s ease",
-                    pointerEvents: sizeControlsVisible ? "auto" : "none",
-                  }}
-                  data-ocid="player.size.panel"
-                >
-                  {VIDEO_SIZES.map((s, i) => (
-                    <button
-                      key={s.title}
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setVideoSizeIndex(i);
-                        showSizeControls();
-                      }}
-                      style={{
-                        width: 34,
-                        height: 34,
-                        borderRadius: 10,
-                        background:
-                          videoSizeIndex === i
-                            ? "rgba(200,0,0,0.75)"
-                            : "rgba(0,0,0,0.62)",
-                        backdropFilter: "blur(14px)",
-                        WebkitBackdropFilter: "blur(14px)",
-                        border: `1px solid ${
-                          videoSizeIndex === i
-                            ? "rgba(255,80,80,0.5)"
-                            : "rgba(255,255,255,0.22)"
-                        }`,
-                        color: "#fff",
-                        fontSize: videoSizeIndex === i ? 12 : 11,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        boxShadow:
-                          videoSizeIndex === i
-                            ? "0 2px 16px rgba(200,0,0,0.4), 0 1px 4px rgba(0,0,0,0.5)"
-                            : "0 2px 12px rgba(0,0,0,0.5)",
-                        transition:
-                          "background 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, font-size 0.15s ease",
-                        transform:
-                          videoSizeIndex === i ? "scale(1.08)" : "scale(1)",
-                      }}
-                      title={s.title}
-                      data-ocid="player.size.button"
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              )}
 
               {/* Miniplayer button overlay */}
               {!isMini && onMinimize && (
@@ -1357,21 +1112,21 @@ export function WatchPage({
                   </span>
                 </div>
 
-                {/* Copy Link */}
+                {/* Download */}
                 <button
                   type="button"
-                  onClick={handleCopyLink}
+                  onClick={handleDownload}
                   className="flex items-center gap-1"
                   style={{
                     flex: 1,
                     justifyContent: "center",
                     padding: "7px 4px",
-                    background: copySuccess ? "#1a3a1a" : "#1a1a1a",
+                    background: copySuccess ? "#1a1a3a" : "#1a1a1a",
                     borderRadius: 20,
-                    border: `1px solid ${copySuccess ? "rgba(0,200,0,0.3)" : "rgba(255,255,255,0.08)"}`,
+                    border: `1px solid ${copySuccess ? "rgba(100,100,255,0.3)" : "rgba(255,255,255,0.08)"}`,
                     fontSize: 11,
                     fontWeight: 500,
-                    color: copySuccess ? "#4caf50" : "#f1f1f1",
+                    color: copySuccess ? "#7b9fff" : "#f1f1f1",
                     cursor: "pointer",
                     whiteSpace: "nowrap",
                     minWidth: 0,
@@ -1379,14 +1134,14 @@ export function WatchPage({
                       "background 0.2s ease, color 0.2s ease, border-color 0.2s ease",
                   }}
                   data-ocid="player.secondary_button"
-                  aria-label="Copy video link"
+                  aria-label="Download video"
                 >
                   {copySuccess ? (
                     <svg
                       aria-hidden="true"
                       width="12"
                       height="12"
-                      fill="#4caf50"
+                      fill="#7b9fff"
                       viewBox="0 0 24 24"
                     >
                       <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
@@ -1399,13 +1154,13 @@ export function WatchPage({
                       fill="#f1f1f1"
                       viewBox="0 0 24 24"
                     >
-                      <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+                      <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
                     </svg>
                   )}
                   <span
                     style={{ overflow: "hidden", textOverflow: "ellipsis" }}
                   >
-                    {copySuccess ? "Copied!" : "Copy Link"}
+                    {copySuccess ? "Copied!" : "Download"}
                   </span>
                 </button>
               </div>
