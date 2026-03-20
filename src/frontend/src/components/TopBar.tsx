@@ -91,7 +91,9 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
       className="fixed top-0 left-0 right-0 z-50"
       style={{
         paddingTop: "env(safe-area-inset-top, 0px)",
-        background: "#000000",
+        background: "rgba(0,0,0,0.55)",
+        backdropFilter: "blur(20px) saturate(180%)",
+        WebkitBackdropFilter: "blur(20px) saturate(180%)",
         border: "none",
         boxShadow: "none",
       }}

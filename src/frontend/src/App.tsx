@@ -97,6 +97,9 @@ export default function App() {
   const miniDragging = useRef(false);
   const miniDragStart = useRef({ tx: 0, ty: 0, px: 0, py: 0 });
   const miniDragTotal = useRef(0);
+  // Tracks when we're in the middle of an expand animation so we skip the
+  // watch-enter slide-up (which conflicts with the clip-path expand transition)
+  const expandingFromMiniRef = useRef(false);
 
   const current = navStack[navStack.length - 1];
   const currentPage = current.page;
@@ -208,6 +211,12 @@ export default function App() {
 
   // Expand: push watch page back — use same startTime so iframe src doesn't change
   const handleExpand = useCallback(() => {
+    // Mark that we're expanding from mini so the watch-enter animation is suppressed
+    // (it conflicts with the clip-path expand transition and causes jank)
+    expandingFromMiniRef.current = true;
+    setTimeout(() => {
+      expandingFromMiniRef.current = false;
+    }, 300);
     if (!activeVideo) return;
     setNavStack((prev) => {
       const top = prev[prev.length - 1];
@@ -419,12 +428,14 @@ export default function App() {
     ? backgroundNavStack[backgroundNavStack.length - 1]?.page || "home"
     : currentPage;
 
-  // Two-div clip-path architecture for GPU-composited mini-player transition
-
   return (
     <div
       className="min-h-screen"
-      style={{ background: "#000000", overscrollBehavior: "none" }}
+      style={{
+        background: "linear-gradient(180deg, #000000 0%, #0d0305 100%)",
+        backgroundAttachment: "fixed",
+        overscrollBehavior: "none",
+      }}
     >
       <TopBar
         onSearch={handleSearch}
@@ -540,15 +551,19 @@ export default function App() {
           from { transform: translateY(100%) scale(0.95) translateZ(0); opacity: 0; }
           to   { transform: translateY(0) scale(1) translateZ(0); opacity: 1; }
         }
-        .watch-enter { animation: slideUp 0.45s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+        .watch-enter { animation: slideUp 0.22s ease-out forwards; }
       `}</style>
 
       {activeVideo && (
         <>
-          {/* OUTER: always fixed full-screen. clip-path transitions the visible area. */}
+          {/* OUTER: always fixed full-screen. clip-path transitions the visible area.
+              Uses translateZ(0) to force its own GPU compositing layer.
+              contain: layout style reduces repaint area during animation. */}
           <div
             data-ocid="player.panel"
-            className={isWatchPage ? "watch-enter" : ""}
+            className={
+              isWatchPage && !expandingFromMiniRef.current ? "watch-enter" : ""
+            }
             style={{
               position: "fixed",
               top: 0,
@@ -560,10 +575,10 @@ export default function App() {
               clipPath: isWatchPage
                 ? "inset(0px 0px 0px 0px round 0px)"
                 : `inset(${miniPos.y}px ${Math.max(0, window.innerWidth - miniPos.x - MINI_W)}px ${Math.max(0, window.innerHeight - miniPos.y - MINI_H)}px ${miniPos.x}px round 16px)`,
-              transition: isDragging
-                ? "none"
-                : "clip-path 0.42s cubic-bezier(0.25,0.46,0.45,0.94)",
+              transition: isDragging ? "none" : "clip-path 0.18s ease-out",
               willChange: "clip-path",
+              transform: "translateZ(0)",
+              contain: "layout style",
             }}
           >
             {/* INNER: full-screen size always, transform scales+moves content to mini */}
@@ -581,9 +596,7 @@ export default function App() {
                 transform: isWatchPage
                   ? "translate3d(0,0,0) scale(1)"
                   : `translate3d(${miniPos.x}px, ${miniPos.y}px, 0) scale(${miniScale})`,
-                transition: isDragging
-                  ? "none"
-                  : "transform 0.42s cubic-bezier(0.25,0.46,0.45,0.94)",
+                transition: isDragging ? "none" : "transform 0.18s ease-out",
                 willChange: "transform",
                 overflow: "hidden",
                 ...(isWatchPage

@@ -61,7 +61,8 @@
 
   body {
     overscroll-behavior: none;
-    background-color: #000000;
+    background: linear-gradient(180deg, #000000 0%, #0d0305 100%);
+    background-attachment: fixed;
     color: #f1f1f1;
     font-family: "Roboto", sans-serif;
     min-height: 100vh;

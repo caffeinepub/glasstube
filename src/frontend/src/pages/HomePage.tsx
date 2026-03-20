@@ -97,8 +97,6 @@ export function HomePage({
           const history = getHistory();
           setHasHistory(history.length > 0);
           if (history.length > 0) {
-            // Use watch history to load interest-based content
-            // Extract titles and category IDs from history for personalization
             const historyTitles = history.slice(0, 5).map((h) => h.title);
             const historyCategoryIds = history
               .slice(0, 5)
@@ -112,7 +110,6 @@ export function HomePage({
               if (results.length >= 6) {
                 setVideos(results);
               } else {
-                // Pad with trending, filtering duplicates
                 const trending = await fetchTrending(undefined);
                 const resultIds = new Set(results.map((v) => v.id));
                 const padded = trending.filter((v) => !resultIds.has(v.id));
@@ -156,53 +153,63 @@ export function HomePage({
 
   return (
     <div className="animate-fade-in">
-      {/* Category chips - glass blur */}
+      {/* Category chips — outer sticky wrapper, inner scroll container (split to fix Android touch-scroll) */}
       <div
-        className="flex items-center gap-2 px-3 py-3"
-        // category bar scroll
-        // eslint-disable-next-line
         style={{
-          scrollbarWidth: "none",
-          msOverflowStyle: "none",
-          overflowX: "auto",
-          WebkitOverflowScrolling: "touch",
           position: "sticky",
           top: "calc(64px + env(safe-area-inset-top, 0px))",
           zIndex: 10,
-          background: "#000000",
+          background: "rgba(0,0,0,0.55)",
+          backdropFilter: "blur(20px) saturate(180%)",
           WebkitBackdropFilter: "blur(20px) saturate(180%)",
-          // border removed
+          touchAction: "pan-x",
         }}
-        data-ocid="home.filter.tab"
       >
-        {CHIPS.map((chip) => {
-          const isActive = activeChip === chip.id;
-          return (
-            <button
-              key={chip.id}
-              type="button"
-              onClick={() => setActiveChip(chip.id)}
-              style={{
-                flexShrink: 0,
-                padding: "7px 14px",
-                borderRadius: 20,
-                fontSize: 14,
-                fontWeight: isActive ? 600 : 400,
-                background: isActive ? "#FF0000" : "rgba(255,255,255,0.1)",
-                color: isActive ? "#fff" : "#e0e0e0",
-                border: "none",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-              }}
-            >
-              <span>{chip.emoji}</span>
-              <span>{chip.label}</span>
-            </button>
-          );
-        })}
+        <div
+          data-ocid="home.filter.tab"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            padding: "8px 10px",
+            flexWrap: "nowrap",
+            overflowX: "scroll",
+            overflowY: "hidden",
+            WebkitOverflowScrolling: "touch",
+            touchAction: "pan-x",
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
+          }}
+        >
+          {CHIPS.map((chip) => {
+            const isActive = activeChip === chip.id;
+            return (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => setActiveChip(chip.id)}
+                style={{
+                  flexShrink: 0,
+                  padding: "5px 9px",
+                  borderRadius: 20,
+                  fontSize: 12,
+                  fontWeight: isActive ? 600 : 400,
+                  background: isActive ? "#FF0000" : "rgba(255,255,255,0.1)",
+                  color: isActive ? "#fff" : "#e0e0e0",
+                  border: "none",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <span>{chip.emoji}</span>
+                <span>{chip.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Section header */}
