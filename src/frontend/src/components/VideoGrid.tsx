@@ -70,7 +70,7 @@ export function VideoGrid({
 
   if (loading) {
     return (
-      <div>
+      <div className="video-grid">
         {Array.from({ length: 8 }).map((_, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: skeleton placeholders
           <VideoCardSkeleton key={i} />
@@ -90,7 +90,7 @@ export function VideoGrid({
   }
 
   return (
-    <div>
+    <div className="video-grid">
       {videos.map((v, i) => (
         <VideoCard
           key={v.id}

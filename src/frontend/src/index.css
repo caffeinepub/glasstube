@@ -190,4 +190,29 @@
   .animate-slide-down {
     animation: slide-down 0.2s ease forwards;
   }
+
+  /* Responsive video grid */
+  .video-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  @media (min-width: 768px) {
+    .video-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+    .video-grid > div {
+      padding: 0 6px;
+    }
+    .topbar-search {
+      width: 300px !important;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .video-grid {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
 }

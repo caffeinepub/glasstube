@@ -539,7 +539,9 @@ export default function App() {
           minHeight: "100vh",
         }}
       >
-        {renderPage()}
+        <div style={{ maxWidth: 1400, margin: "0 auto", width: "100%" }}>
+          {renderPage()}
+        </div>
       </main>
 
       {/* Persistent WatchPage overlay — animates between full-screen and mini-card.

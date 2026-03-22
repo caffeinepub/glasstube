@@ -109,7 +109,9 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
           paddingRight: 10,
           boxSizing: "border-box",
           width: "100%",
-          overflow: "hidden",
+          maxWidth: 1400,
+          margin: "0 auto",
+          overflow: "visible",
         }}
       >
         {/* Logo + Brand */}
@@ -210,6 +212,7 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
 
         {/* Search bar wrapper — alignSelf:center + explicit height locks it to exact vertical center */}
         <div
+          className="topbar-search"
           style={{
             flexShrink: 0,
             width: 170,
