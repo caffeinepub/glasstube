@@ -6,6 +6,7 @@ import { hasApiKey } from "@/lib/youtube";
 import { ChannelPage } from "@/pages/ChannelPage";
 import { HistoryPage } from "@/pages/HistoryPage";
 import { HomePage } from "@/pages/HomePage";
+import { LibraryPage } from "@/pages/LibraryPage";
 import { SearchPage } from "@/pages/SearchPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { SetupPage } from "@/pages/SetupPage";
@@ -23,7 +24,8 @@ type Page =
   | "search"
   | "history"
   | "watch"
-  | "channel";
+  | "channel"
+  | "library";
 
 interface NavState {
   page: Page;
@@ -357,14 +359,8 @@ export default function App() {
         />
       );
     }
-    if (page === "trending") {
-      return (
-        <HomePage
-          onWatch={handleWatch}
-          onChannelClick={handleChannelClick}
-          initialChip="trending"
-        />
-      );
+    if (page === "library") {
+      return <LibraryPage onWatch={handleWatch} />;
     }
     return (
       <HomePage onWatch={handleWatch} onChannelClick={handleChannelClick} />
@@ -410,14 +406,8 @@ export default function App() {
         />
       );
     }
-    if (currentPage === "trending") {
-      return (
-        <HomePage
-          onWatch={handleWatch}
-          onChannelClick={handleChannelClick}
-          initialChip="trending"
-        />
-      );
+    if (currentPage === "library") {
+      return <LibraryPage onWatch={handleWatch} />;
     }
     return (
       <HomePage onWatch={handleWatch} onChannelClick={handleChannelClick} />

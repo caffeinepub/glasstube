@@ -149,10 +149,10 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
               src="/assets/uploads/IMG_20260314_072526-1-1.png"
               alt="M"
               style={{
-                width: 46,
-                height: 46,
-                objectFit: "contain",
-                mixBlendMode: "screen",
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                borderRadius: "50%",
                 display: "block",
               }}
             />

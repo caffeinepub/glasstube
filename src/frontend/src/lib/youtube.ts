@@ -547,3 +547,73 @@ export async function fetchChannelVideos(channelId: string): Promise<{
   cacheSet(cacheKey, result, CHANNEL_TTL_MS);
   return result;
 }
+
+export interface YouTubePlaylist {
+  id: string;
+  title: string;
+  channelTitle: string;
+  channelId: string;
+  thumbnail: string;
+  videoCount: number;
+  publishedAt: string;
+}
+
+const PLAYLIST_CACHE: Record<
+  string,
+  { data: YouTubePlaylist[]; expires: number }
+> = {};
+const PLAYLIST_TTL_MS = 10 * 60 * 1000;
+
+export async function searchPlaylists(
+  query: string,
+): Promise<YouTubePlaylist[]> {
+  const key = `playlists:${query}`;
+  const now = Date.now();
+  if (PLAYLIST_CACHE[key] && PLAYLIST_CACHE[key].expires > now) {
+    return PLAYLIST_CACHE[key].data;
+  }
+  const apiKey = getApiKey();
+  if (!apiKey) return [];
+  const searchRes = await fetch(
+    `${BASE}/search?part=snippet&type=playlist&q=${encodeURIComponent(query)}&maxResults=20&key=${apiKey}`,
+  );
+  if (!searchRes.ok) return [];
+  const searchData = await searchRes.json();
+  const items = searchData.items || [];
+  if (items.length === 0) return [];
+
+  // Fetch video counts via playlists endpoint
+  const ids = items.map((i: any) => i.id?.playlistId || i.id).join(",");
+  let countMap: Record<string, number> = {};
+  try {
+    const detailRes = await fetch(
+      `${BASE}/playlists?part=contentDetails&id=${ids}&key=${apiKey}`,
+    );
+    if (detailRes.ok) {
+      const detailData = await detailRes.json();
+      for (const item of detailData.items || []) {
+        countMap[item.id] = item.contentDetails?.itemCount || 0;
+      }
+    }
+  } catch {}
+
+  const playlists: YouTubePlaylist[] = items.map((item: any) => {
+    const plId = item.id?.playlistId || item.id;
+    const thumb =
+      item.snippet?.thumbnails?.medium?.url ||
+      item.snippet?.thumbnails?.default?.url ||
+      "";
+    return {
+      id: plId,
+      title: item.snippet?.title || "",
+      channelTitle: item.snippet?.channelTitle || "",
+      channelId: item.snippet?.channelId || "",
+      thumbnail: thumb,
+      videoCount: countMap[plId] || 0,
+      publishedAt: item.snippet?.publishedAt || "",
+    };
+  });
+
+  PLAYLIST_CACHE[key] = { data: playlists, expires: now + PLAYLIST_TTL_MS };
+  return playlists;
+}

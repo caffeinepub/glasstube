@@ -5,7 +5,7 @@ interface BottomNavProps {
 
 const NAV_ITEMS = [
   { id: "home", label: "HOME", icon: HomeIcon },
-  { id: "trending", label: "TRENDING", icon: TrendingIcon },
+  { id: "library", label: "LIBRARY", icon: LibraryIcon },
   { id: "history", label: "HISTORY", icon: HistoryIcon },
   { id: "settings", label: "SETTINGS", icon: SettingsIcon },
 ];
@@ -90,7 +90,8 @@ function HomeIcon({ active }: { active?: boolean }) {
     </svg>
   );
 }
-function TrendingIcon({ active }: { active?: boolean }) {
+
+function LibraryIcon({ active }: { active?: boolean }) {
   return (
     <svg
       aria-hidden="true"
@@ -99,10 +100,18 @@ function TrendingIcon({ active }: { active?: boolean }) {
       viewBox="0 0 24 24"
       fill={active ? "#FF0000" : "#717171"}
     >
-      <path d="M17.2 6.3L13.7 9.8 11 7.1 6 12.1l1.4 1.4 3.6-3.6 2.7 2.7 4.9-4.9L17.2 6.3zM4 18h16v2H4z" />
+      {active ? (
+        <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9h-4v4h-2v-4H9V9h4V5h2v4h4v2z" />
+      ) : (
+        <>
+          <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z" />
+          <path d="M9 9h6v2H9zm0 3h6v2H9zm0-6h6v2H9z" />
+        </>
+      )}
     </svg>
   );
 }
+
 function HistoryIcon({ active }: { active?: boolean }) {
   return (
     <svg
@@ -116,6 +125,7 @@ function HistoryIcon({ active }: { active?: boolean }) {
     </svg>
   );
 }
+
 function SettingsIcon({ active }: { active?: boolean }) {
   return (
     <svg

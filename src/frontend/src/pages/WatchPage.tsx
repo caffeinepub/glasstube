@@ -5,6 +5,7 @@ import {
   saveToHistory,
   updateResumeTime,
 } from "@/lib/history";
+import { isVideoSaved, removeVideo, saveVideo } from "@/lib/library";
 import {
   type YouTubeComment,
   type YouTubeSearchResult,
@@ -128,16 +129,6 @@ function useAmbientMode(
   }, [videoId, canvasRef]);
 }
 
-function formatDate(iso: string): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
 const PAGE_SIZE = 10;
 
 export function WatchPage({
@@ -168,6 +159,7 @@ export function WatchPage({
   const [fsAnimating, setFsAnimating] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [_miniPlaying, setMiniPlaying] = useState(true);
+  const [isSaved, setIsSaved] = useState(() => isVideoSaved(videoId));
 
   const ambientCanvasRef = useRef<HTMLCanvasElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -1084,33 +1076,75 @@ export function WatchPage({
                   </span>
                 </div>
 
-                {/* Date */}
-                <div
+                {/* Save */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isSaved) {
+                      removeVideo(video.id);
+                      setIsSaved(false);
+                    } else {
+                      saveVideo({
+                        id: video.id,
+                        title: video.title,
+                        channelTitle: video.channelTitle,
+                        channelId: video.channelId,
+                        thumbnail: video.thumbnail,
+                        duration: video.duration,
+                        savedAt: Date.now(),
+                      });
+                      setIsSaved(true);
+                    }
+                  }}
                   className="flex items-center gap-1"
+                  data-ocid="player.save.toggle"
+                  aria-label={
+                    isSaved ? "Remove from library" : "Save to library"
+                  }
                   style={{
                     flex: 1,
                     justifyContent: "center",
                     padding: "7px 4px",
-                    background: "#1a1a1a",
+                    background: isSaved ? "rgba(255,0,0,0.15)" : "#1a1a1a",
                     borderRadius: 20,
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    fontSize: 12,
+                    border: `1px solid ${isSaved ? "rgba(255,0,0,0.4)" : "rgba(255,255,255,0.08)"}`,
+                    fontSize: 11,
                     fontWeight: 500,
-                    color: "#f1f1f1",
+                    color: isSaved ? "#FF0000" : "#f1f1f1",
                     whiteSpace: "nowrap",
                     minWidth: 0,
+                    cursor: "pointer",
+                    transition:
+                      "background 0.2s ease, color 0.2s ease, border-color 0.2s ease",
                   }}
                 >
+                  {isSaved ? (
+                    <svg
+                      aria-hidden="true"
+                      width="12"
+                      height="12"
+                      fill="#FF0000"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2-2z" />
+                    </svg>
+                  ) : (
+                    <svg
+                      aria-hidden="true"
+                      width="12"
+                      height="12"
+                      fill="#f1f1f1"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2zm0 15l-5-2.18L7 18V5h10v13z" />
+                    </svg>
+                  )}
                   <span
-                    style={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      fontSize: 11,
-                    }}
+                    style={{ overflow: "hidden", textOverflow: "ellipsis" }}
                   >
-                    {formatDate(video.publishedAt)}
+                    {isSaved ? "Saved" : "Save"}
                   </span>
-                </div>
+                </button>
 
                 {/* Download */}
                 <button

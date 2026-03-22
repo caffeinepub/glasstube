@@ -1,27 +1,31 @@
-# GlassTube
+# GlassTube — Version 53
 
 ## Current State
-Mobile-first single-column video grid. Header has safe-area padding. index.html already has viewport-fit=cover and iOS meta tags.
+Full YouTube-inspired mobile app with: home feed, search (videos only), watch page (4 action buttons: likes, duration, publish date, download), history, trending, settings, miniplayer, responsive tablet/desktop layouts.
 
 ## Requested Changes (Diff)
 
 ### Add
-- Responsive grid: 1-col mobile, 3-col tablet (768px+), 4-col desktop (1280px+)
-- Max-width content container on wide screens
-- TopBar inner layout constrained to max-width, background stays full-bleed
+- `src/frontend/src/lib/library.ts` — localStorage library helpers (save/remove videos & playlists, check saved state)
+- `src/frontend/src/pages/LibraryPage.tsx` — Library page showing saved videos and playlists in two tabs
+- Playlist search support in `youtube.ts` — `searchPlaylists()` function + `YouTubePlaylist` type
 
 ### Modify
-- VideoGrid.tsx: responsive CSS grid
-- VideoCard.tsx: work inside grid columns
-- TopBar.tsx: max-width inner wrapper
-- App.tsx: responsive main padding/max-width
+- `BottomNav.tsx` — Replace TRENDING with LIBRARY (new library icon)
+- `App.tsx` — Add `"library"` to Page type, render LibraryPage, update nav routing
+- `SearchPage.tsx` — Add filter tabs: All | Videos | Playlists; filter Shorts (duration ≤ 60s) from Videos tab; show playlist cards in Playlists tab with save-to-library button
+- `WatchPage.tsx` — Replace publish date action button with Save/Saved toggle button; connect to library.ts
+- `TopBar.tsx` — Fix logo: change `objectFit: contain` → `objectFit: cover` and add `borderRadius: "50%"` to the img element so the image fills the circle cleanly
 
 ### Remove
-- Nothing
+- Nothing removed
 
 ## Implementation Plan
-1. VideoGrid: CSS grid with responsive columns
-2. VideoCard: remove forced full-width so grid columns control width
-3. TopBar: max-width inner div on wide viewports, background still full-bleed
-4. App.tsx main area: max-width centering
-5. index.css: media query helpers for grid
+1. Create `lib/library.ts` with save/remove/check helpers for videos and playlists using localStorage
+2. Create `YouTubePlaylist` interface and `searchPlaylists()` in `youtube.ts`
+3. Create `LibraryPage.tsx` with two tabs: Saved Videos | Saved Playlists, with remove buttons
+4. Update `BottomNav.tsx`: replace TRENDING item with LIBRARY (bookmark icon)
+5. Update `App.tsx`: add `"library"` page type, render LibraryPage for both renderPage and renderBackgroundPage
+6. Update `SearchPage.tsx`: add filter tabs (All/Videos/Playlists), filter out shorts in Videos tab, show playlist cards in Playlists tab
+7. Update `WatchPage.tsx`: replace publish date button with Save/Saved toggle, use library.ts to persist
+8. Update `TopBar.tsx`: fix logo img to use `objectFit: cover` + `borderRadius: 50%` for true circular clip
