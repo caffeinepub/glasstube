@@ -497,6 +497,7 @@ export function WatchPage({
     if (isMini) return;
     const dy = e.touches[0].clientY - dragStartY.current;
     const dx = e.touches[0].clientX - swipeDragX.current;
+    if (Math.abs(dy) < 8) return;
     if (Math.abs(dy) > Math.abs(dx) && dy > 0 && swipeContainerRef.current) {
       e.preventDefault();
       const progress = Math.min(1, dy / 260);
@@ -618,9 +619,6 @@ export function WatchPage({
             <div
               ref={playerCardRef}
               id="player-card-inner"
-              onTouchStart={!isMini ? handleSwipeTouchStart : undefined}
-              onTouchMove={!isMini ? handleSwipeTouchMove : undefined}
-              onTouchEnd={!isMini ? handleSwipeTouchEnd : undefined}
               style={{
                 borderRadius: isMini ? 0 : 20,
                 overflow: "hidden",
@@ -650,11 +648,11 @@ export function WatchPage({
                     top: 0,
                     left: 0,
                     right: 0,
-                    height: "50%",
+                    height: "32px",
                     zIndex: 5,
                     background: "transparent",
                     cursor: "default",
-                    touchAction: "pan-x",
+                    touchAction: "pan-y",
                   }}
                   onTouchStart={handleSwipeTouchStart}
                   onTouchMove={handleSwipeTouchMove}

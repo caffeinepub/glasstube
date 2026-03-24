@@ -85,23 +85,20 @@ export default function App() {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const { canInstall, install } = usePwaInstall();
 
-  // Mini-player drag state — use ref for position during drag, state only on end
+  // Mini-player drag state
   const [miniPos, setMiniPos] = useState(() => ({
     x: window.innerWidth - MINI_W - 10,
     y: window.innerHeight - MINI_H - 86,
   }));
-  // isDragging as state so the container style re-renders to remove transition
   const [isDragging, setIsDragging] = useState(false);
   const [miniPlaying, setMiniPlaying] = useState(true);
+  // Panel ref: we animate this element directly for zero-React-overhead transitions
+  const panelRef = useRef<HTMLDivElement>(null);
   const miniRef = useRef<HTMLDivElement>(null);
   const miniControlsRef = useRef<HTMLDivElement>(null);
-  const innerRef = useRef<HTMLDivElement>(null);
   const miniDragging = useRef(false);
   const miniDragStart = useRef({ tx: 0, ty: 0, px: 0, py: 0 });
   const miniDragTotal = useRef(0);
-  // Tracks when we're in the middle of an expand animation so we skip the
-  // watch-enter slide-up (which conflicts with the clip-path expand transition)
-  const expandingFromMiniRef = useRef(false);
 
   const current = navStack[navStack.length - 1];
   const currentPage = current.page;
@@ -145,6 +142,36 @@ export default function App() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
+  // Apply panel transform directly — no React re-render during animation
+  // isWatch=true → full screen; isWatch=false → mini card at (x,y)
+  const applyPanelTransform = useCallback(
+    (isWatch: boolean, x: number, y: number, animate: boolean) => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      if (animate) {
+        panel.style.transition =
+          "transform 0.22s cubic-bezier(0.25,0.46,0.45,0.94), border-radius 0.22s cubic-bezier(0.25,0.46,0.45,0.94)";
+      } else {
+        panel.style.transition = "none";
+      }
+      if (isWatch) {
+        panel.style.transform = "translate3d(0,0,0) scale(1)";
+        panel.style.borderRadius = "0px";
+        panel.style.pointerEvents = "auto";
+      } else {
+        panel.style.transform = `translate3d(${x}px,${y}px,0) scale(${miniScale})`;
+        panel.style.borderRadius = `${16 / miniScale}px`;
+        panel.style.pointerEvents = "none";
+      }
+    },
+    [miniScale],
+  );
+
+  // Sync panel whenever isWatchPage or miniPos changes
+  useEffect(() => {
+    applyPanelTransform(isWatchPage, miniPos.x, miniPos.y, true);
+  }, [isWatchPage, miniPos, applyPanelTransform]);
+
   const pushPage = useCallback((state: NavState) => {
     window.history.pushState({ depth: 1 }, "");
     setNavStack((prev) => [...prev, state]);
@@ -171,7 +198,6 @@ export default function App() {
       return [...prev, { page: "watch", watchId: id, watchStartTime: st }];
     });
     setActiveVideo({ videoId: id, startTime: st });
-    // Reset mini position to default bottom-right for the new video
     setMiniPos({
       x: window.innerWidth - MINI_W - 10,
       y: window.innerHeight - MINI_H - 86,
@@ -186,20 +212,21 @@ export default function App() {
     [pushPage],
   );
 
-  // Minimize: just pop nav stack — do NOT change startTime or reload iframe
   const handleMinimize = useCallback(
     (_currentTime: number) => {
       setMiniPlaying(true);
-      // Reset mini card position to bottom-right
       const newPos = {
         x: window.innerWidth - MINI_W - 10,
         y: window.innerHeight - MINI_H - 86,
       };
       setMiniPos(newPos);
-      // Also immediately update the ref'd element position if it exists
       if (miniRef.current) {
         miniRef.current.style.left = `${newPos.x}px`;
         miniRef.current.style.top = `${newPos.y}px`;
+      }
+      if (miniControlsRef.current) {
+        miniControlsRef.current.style.left = `${newPos.x}px`;
+        miniControlsRef.current.style.top = `${newPos.y + MINI_H - 48}px`;
       }
       setNavStack((prev) => {
         if (prev.length > 1) return prev.slice(0, -1);
@@ -211,14 +238,7 @@ export default function App() {
     [backgroundNavStack],
   );
 
-  // Expand: push watch page back — use same startTime so iframe src doesn't change
   const handleExpand = useCallback(() => {
-    // Mark that we're expanding from mini so the watch-enter animation is suppressed
-    // (it conflicts with the clip-path expand transition and causes jank)
-    expandingFromMiniRef.current = true;
-    setTimeout(() => {
-      expandingFromMiniRef.current = false;
-    }, 300);
     if (!activeVideo) return;
     setNavStack((prev) => {
       const top = prev[prev.length - 1];
@@ -244,7 +264,7 @@ export default function App() {
     });
   }, []);
 
-  // Mini-player drag handlers — DOM manipulation during drag, state update only on end
+  // Drag handlers — pure DOM manipulation, zero React overhead
   const handleMiniTouchStart = useCallback(
     (e: React.TouchEvent) => {
       miniDragging.current = true;
@@ -256,6 +276,8 @@ export default function App() {
         py: miniPos.y,
       };
       setIsDragging(true);
+      // Kill transition during drag
+      if (panelRef.current) panelRef.current.style.transition = "none";
     },
     [miniPos],
   );
@@ -275,36 +297,32 @@ export default function App() {
       Math.min(window.innerHeight - MINI_H - 60, miniDragStart.current.py + dy),
     );
     const scale = MINI_W / window.innerWidth;
-    const iw = window.innerWidth;
-    const ih = window.innerHeight;
-    // Direct DOM manipulation — zero React re-render overhead
+
+    // Direct DOM: panel transform
+    if (panelRef.current) {
+      panelRef.current.style.transform = `translate3d(${newX}px,${newY}px,0) scale(${scale})`;
+    }
+    // Drag overlay
     if (miniRef.current) {
       miniRef.current.style.left = `${newX}px`;
       miniRef.current.style.top = `${newY}px`;
     }
+    // Controls overlay
     if (miniControlsRef.current) {
       miniControlsRef.current.style.left = `${newX}px`;
       miniControlsRef.current.style.top = `${newY + MINI_H - 48}px`;
-    }
-    if (innerRef.current) {
-      innerRef.current.style.transform = `translate3d(${newX}px, ${newY}px, 0) scale(${scale})`;
-    }
-    const outerDiv = innerRef.current?.parentElement;
-    if (outerDiv) {
-      outerDiv.style.clipPath = `inset(${newY}px ${Math.max(0, iw - newX - MINI_W)}px ${Math.max(0, ih - newY - MINI_H)}px ${newX}px round 16px)`;
     }
   }, []);
 
   const handleMiniTouchEnd = useCallback(() => {
     miniDragging.current = false;
     setIsDragging(false);
-    // Sync state with current DOM position so next render is correct
-    if (miniRef.current) {
+    if (panelRef.current) {
       const left =
-        Number.parseFloat(miniRef.current.style.left) ||
+        Number.parseFloat(miniRef.current?.style.left || "") ||
         miniDragStart.current.px;
       const top =
-        Number.parseFloat(miniRef.current.style.top) ||
+        Number.parseFloat(miniRef.current?.style.top || "") ||
         miniDragStart.current.py;
       setMiniPos({ x: left, y: top });
     }
@@ -534,28 +552,28 @@ export default function App() {
         </div>
       </main>
 
-      {/* Persistent WatchPage overlay — animates between full-screen and mini-card.
-          NEVER unmounts when activeVideo exists (same videoId) — this keeps the
-          iframe alive and playing with zero restart or buffering. */}
+      {/* Global animation styles */}
       <style>{`
         html, body { overscroll-behavior: none; }
         @keyframes slideUp {
-          from { transform: translateY(100%) scale(0.95) translateZ(0); opacity: 0; }
-          to   { transform: translateY(0) scale(1) translateZ(0); opacity: 1; }
+          from { opacity: 0; transform: translateY(6%) translateZ(0); }
+          to   { opacity: 1; transform: translateY(0) translateZ(0); }
         }
-        .watch-enter { animation: slideUp 0.22s ease-out forwards; }
+        .watch-slide-in { animation: slideUp 0.2s cubic-bezier(0.25,0.46,0.45,0.94) forwards; }
       `}</style>
 
+      {/* ─── Persistent player panel ───────────────────────────────────────────
+          Single element, never unmounts while activeVideo exists.
+          Animates via transform only (GPU-composited, zero layout cost):
+            full-screen → translate(0,0) scale(1)
+            mini card  → translate(x,y) scale(miniScale)
+          border-radius compensates for the scale so it looks like 16px.
+      */}
       {activeVideo && (
         <>
-          {/* OUTER: always fixed full-screen. clip-path transitions the visible area.
-              Uses translateZ(0) to force its own GPU compositing layer.
-              contain: layout style reduces repaint area during animation. */}
           <div
+            ref={panelRef}
             data-ocid="player.panel"
-            className={
-              isWatchPage && !expandingFromMiniRef.current ? "watch-enter" : ""
-            }
             style={{
               position: "fixed",
               top: 0,
@@ -563,61 +581,33 @@ export default function App() {
               width: "100vw",
               height: "100vh",
               zIndex: 400,
+              overflow: "hidden",
+              background: "#000",
+              willChange: "transform",
+              transformOrigin: "top left",
+              // Initial state set via JS in effect; inline here as fallback
+              transform: isWatchPage
+                ? "translate3d(0,0,0) scale(1)"
+                : `translate3d(${miniPos.x}px,${miniPos.y}px,0) scale(${miniScale})`,
+              borderRadius: isWatchPage ? "0px" : `${16 / miniScale}px`,
               pointerEvents: isWatchPage ? "auto" : "none",
-              clipPath: isWatchPage
-                ? "inset(0px 0px 0px 0px round 0px)"
-                : `inset(${miniPos.y}px ${Math.max(0, window.innerWidth - miniPos.x - MINI_W)}px ${Math.max(0, window.innerHeight - miniPos.y - MINI_H)}px ${miniPos.x}px round 16px)`,
-              transition: isDragging ? "none" : "clip-path 0.18s ease-out",
-              willChange: "clip-path",
-              transform: "translateZ(0)",
-              contain: "layout style",
+              // No transition here — applied programmatically to avoid React
+              // re-applying it on every render and resetting the animation
             }}
           >
-            {/* INNER: full-screen size always, transform scales+moves content to mini */}
-            <div
-              ref={innerRef}
-              key={activeVideo.videoId}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100vw",
-                height: "100vh",
-                background: "#000",
-                transformOrigin: "top left",
-                transform: isWatchPage
-                  ? "translate3d(0,0,0) scale(1)"
-                  : `translate3d(${miniPos.x}px, ${miniPos.y}px, 0) scale(${miniScale})`,
-                transition: isDragging ? "none" : "transform 0.18s ease-out",
-                willChange: "transform",
-                overflow: "hidden",
-                ...(isWatchPage
-                  ? {
-                      borderRadius: 0,
-                      boxShadow: "none",
-                      border: "none",
-                    }
-                  : {
-                      borderRadius: `${16 / miniScale}px`,
-                      border: `${1 / miniScale}px solid rgba(255,255,255,0.14)`,
-                      boxShadow: `0 ${12 / miniScale}px ${40 / miniScale}px rgba(0,0,0,0.8)`,
-                    }),
-              }}
-            >
-              <WatchPage
-                videoId={watchId || activeVideo.videoId}
-                startTime={current.watchStartTime ?? activeVideo.startTime}
-                isMini={!isWatchPage}
-                onWatch={handleWatch}
-                onChannelClick={handleChannelClick}
-                onMinimize={handleMinimize}
-                onExpand={handleExpand}
-                onClose={handleClose}
-              />
-            </div>
+            <WatchPage
+              videoId={watchId || activeVideo.videoId}
+              startTime={current.watchStartTime ?? activeVideo.startTime}
+              isMini={!isWatchPage}
+              onWatch={handleWatch}
+              onChannelClick={handleChannelClick}
+              onMinimize={handleMinimize}
+              onExpand={handleExpand}
+              onClose={handleClose}
+            />
           </div>
 
-          {/* MINI OVERLAY: transparent interaction layer for drag/tap when in mini mode */}
+          {/* Transparent drag / tap overlay for mini mode */}
           {!isWatchPage && (
             <div
               ref={miniRef}
@@ -646,7 +636,7 @@ export default function App() {
             />
           )}
 
-          {/* Mini controls rendered in App — above drag overlay so clicks reach them */}
+          {/* Controls overlay — rendered above drag layer */}
           {!isWatchPage && activeVideo && (
             <div
               ref={miniControlsRef}
@@ -740,7 +730,6 @@ export default function App() {
                 )}
               </button>
 
-              {/* Spacer */}
               <span style={{ flex: 1 }} />
 
               {/* Expand */}

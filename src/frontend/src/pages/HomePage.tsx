@@ -153,15 +153,13 @@ export function HomePage({
 
   return (
     <div className="animate-fade-in">
-      {/* Category chips — outer sticky wrapper, inner scroll container (split to fix Android touch-scroll) */}
+      {/* Category chips — pure black sticky bar, inner scrollable container */}
       <div
         style={{
           position: "sticky",
           top: "calc(64px + env(safe-area-inset-top, 0px))",
           zIndex: 10,
-          background: "rgba(0,0,0,0.55)",
-          backdropFilter: "blur(20px) saturate(180%)",
-          WebkitBackdropFilter: "blur(20px) saturate(180%)",
+          background: "#000000",
           touchAction: "pan-x",
         }}
       >
