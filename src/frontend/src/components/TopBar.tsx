@@ -137,10 +137,8 @@ export function TopBar({ onSearch, onNavigate, currentQuery }: TopBarProps) {
               border: "2px solid rgba(255,0,0,0.75)",
               overflow: "hidden",
               flexShrink: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "rgba(0,0,0,0.3)",
+              background: "transparent",
+              padding: 0,
             }}
           >
             <img

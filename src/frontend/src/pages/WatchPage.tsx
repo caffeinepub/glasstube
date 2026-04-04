@@ -497,7 +497,7 @@ export function WatchPage({
     if (isMini) return;
     const dy = e.touches[0].clientY - dragStartY.current;
     const dx = e.touches[0].clientX - swipeDragX.current;
-    if (Math.abs(dy) < 8) return;
+    if (Math.abs(dy) < 5) return;
     if (Math.abs(dy) > Math.abs(dx) && dy > 0 && swipeContainerRef.current) {
       e.preventDefault();
       const progress = Math.min(1, dy / 260);
@@ -511,7 +511,7 @@ export function WatchPage({
   const handleSwipeTouchEnd = (e: React.TouchEvent) => {
     if (isMini) return;
     const dy = e.changedTouches[0].clientY - dragStartY.current;
-    if (dy > 80 && !swipeAnimating.current) {
+    if (dy > 55 && !swipeAnimating.current) {
       swipeAnimating.current = true;
       if (swipeContainerRef.current) {
         swipeContainerRef.current.style.transition =
@@ -648,7 +648,7 @@ export function WatchPage({
                     top: 0,
                     left: 0,
                     right: 0,
-                    height: "32px",
+                    height: "72px",
                     zIndex: 5,
                     background: "transparent",
                     cursor: "default",

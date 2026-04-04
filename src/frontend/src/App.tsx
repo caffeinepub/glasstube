@@ -159,7 +159,8 @@ export default function App() {
         panel.style.borderRadius = "0px";
         panel.style.pointerEvents = "auto";
       } else {
-        panel.style.transform = `translate3d(${x}px,${y}px,0) scale(${miniScale})`;
+        const scale = MINI_W / window.innerWidth;
+        panel.style.transform = `translate3d(${x}px,${y}px,0) scale(${scale})`;
         panel.style.borderRadius = `${16 / miniScale}px`;
         panel.style.pointerEvents = "none";
       }
@@ -568,6 +569,8 @@ export default function App() {
             full-screen → translate(0,0) scale(1)
             mini card  → translate(x,y) scale(miniScale)
           border-radius compensates for the scale so it looks like 16px.
+          Inner clip div constrains height to MINI_H when mini so video
+          cannot bleed below the card boundary.
       */}
       {activeVideo && (
         <>
@@ -579,11 +582,15 @@ export default function App() {
               top: 0,
               left: 0,
               width: "100vw",
-              height: "100vh",
+              height: isWatchPage
+                ? "100vh"
+                : `${Math.round(MINI_H / miniScale)}px`,
               zIndex: 400,
               overflow: "hidden",
               background: "#000",
               willChange: "transform",
+              backfaceVisibility: "hidden",
+              WebkitBackfaceVisibility: "hidden",
               transformOrigin: "top left",
               // Initial state set via JS in effect; inline here as fallback
               transform: isWatchPage
@@ -595,16 +602,29 @@ export default function App() {
               // re-applying it on every render and resetting the animation
             }}
           >
-            <WatchPage
-              videoId={watchId || activeVideo.videoId}
-              startTime={current.watchStartTime ?? activeVideo.startTime}
-              isMini={!isWatchPage}
-              onWatch={handleWatch}
-              onChannelClick={handleChannelClick}
-              onMinimize={handleMinimize}
-              onExpand={handleExpand}
-              onClose={handleClose}
-            />
+            {/* Height-clipping wrapper: locks rendered height to MINI_H when minimized */}
+            <div
+              style={{
+                height: isWatchPage
+                  ? "100%"
+                  : `${Math.round(MINI_H / miniScale)}px`,
+                overflow: "hidden",
+                width: "100%",
+                position: "relative",
+                borderRadius: isWatchPage ? 0 : `${16 / miniScale}px`,
+              }}
+            >
+              <WatchPage
+                videoId={watchId || activeVideo.videoId}
+                startTime={current.watchStartTime ?? activeVideo.startTime}
+                isMini={!isWatchPage}
+                onWatch={handleWatch}
+                onChannelClick={handleChannelClick}
+                onMinimize={handleMinimize}
+                onExpand={handleExpand}
+                onClose={handleClose}
+              />
+            </div>
           </div>
 
           {/* Transparent drag / tap overlay for mini mode */}
@@ -649,8 +669,7 @@ export default function App() {
                 zIndex: 402,
                 background:
                   "linear-gradient(to top, rgba(0,0,0,0.88), transparent)",
-                borderBottomLeftRadius: 16,
-                borderBottomRightRadius: 16,
+                borderRadius: 16,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
